@@ -110,7 +110,11 @@ class ReservationStation(Module):
         reorder_array = RegArray(Bits(32), 32)
         reorder_busy_array = RegArray(Bits(1), 32)
         lsq_poses_array = RegArray(Bits(32), RS_SIZE)
-        lsq_pos = RegArray(Bits(32), 1)
+        lsq_pos = RegArray(Bits(32), 1, initializer=[1])
+        lq_poses_array = RegArray(Bits(32), RS_SIZE)
+        lq_pos = RegArray(Bits(32), 1)
+        sq_poses_array = RegArray(Bits(32), RS_SIZE)
+        sq_pos = RegArray(Bits(32), 1)
 
         new_val = in_valid_from_rob[0].select(
             value_from_rob[0], Bits(32)(0)
@@ -202,12 +206,16 @@ class ReservationStation(Module):
             for i in range(32):
                 (reorder_busy_array & revert_ports[i])[i] = Bits(1)(0)
 
-            lsq_pos[0] = Bits(32)(0)
+            lsq_pos[0] = Bits(32)(1)
             newly_append_index[0] = Bits(32)(0)
             pos_in_rob[0] = Bits(32)(0)
+            lq_pos[0] = Bits(32)(0)
+            sq_pos[0] = Bits(32)(0)
                 
                 
         write_port_2 = RSWritePort()
+        write_port_reorder = RSWritePort()
+        write_port_reorder_busy = RSWritePort()
 
         # Append new entry
         with Condition(has_entry_from_d & ~revert_flag):
@@ -244,15 +252,36 @@ class ReservationStation(Module):
             (dispatched_array & write_port_2)[newly_append_ind] = Bits(1)(0)
             rob_dest_array[newly_append_ind] = pos_in_rob[0]
 
-            with Condition(memory_from_d != Bits(2)(0)):  # Load/Store
+            with Condition(memory_from_d[0:0] == Bits(1)(1)):  # Load
                 lsq_poses_array[newly_append_ind] = lsq_pos[0]
                 lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
                     Bits(32)
                 )
+                lq_poses_array[newly_append_ind] = lq_pos[0]
+                lq_pos[0] = (lq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
+                    Bits(32)
+                )
                 log(
-                    "RS entry index {} assigned LSQ position {}",
+                    "RS entry index {} assigned LSQ load position {}, LQ position {}",
                     newly_append_ind,
-                    lsq_pos[0].bitcast(Int(32)),
+                    lsq_poses_array[newly_append_ind],
+                    lq_poses_array[newly_append_ind],
+                )
+
+            with Condition(memory_from_d[1:1] == Bits(1)(1)):  # Store
+                lsq_poses_array[newly_append_ind] = lsq_pos[0]
+                lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
+                    Bits(32)
+                )
+                sq_poses_array[newly_append_ind] = sq_pos[0]
+                sq_pos[0] = (sq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
+                    Bits(32)
+                )
+                log(
+                    "RS entry index {} assigned LSQ store position {}, SQ position {}",
+                    newly_append_ind,
+                    lsq_poses_array[newly_append_ind],
+                    sq_poses_array[newly_append_ind],
                 )
 
             with Condition(rs1_valid_from_d):
@@ -347,8 +376,8 @@ class ReservationStation(Module):
 
             with Condition(rd_valid_from_d):
                 rd_valid_array[newly_append_ind] = Bits(1)(1)
-                (reorder_array & write_port_2)[rd_from_d] = newly_append_ind.bitcast(Bits(32))
-                (reorder_busy_array & write_port_2)[rd_from_d] = Bits(1)(1)
+                (reorder_array & write_port_reorder)[rd_from_d] = newly_append_ind.bitcast(Bits(32))
+                (reorder_busy_array & write_port_reorder_busy)[rd_from_d] = Bits(1)(1)
                 log(
                     "Reorder array updated: x{:02} -> RS entry {}",
                     rd_from_d,
@@ -361,8 +390,8 @@ class ReservationStation(Module):
 
             with Condition(~rd_valid_from_d):
                 rd_valid_array[newly_append_ind] = Bits(1)(0)
-                (reorder_array & write_port_2)[rd_from_d] = Bits(32)(0)
-                (reorder_busy_array & write_port_2)[rd_from_d] = Bits(1)(0)
+                (reorder_array & write_port_reorder)[rd_from_d] = Bits(32)(0)
+                (reorder_busy_array & write_port_reorder_busy)[rd_from_d] = Bits(1)(0)
                 log(
                     "Reorder array cleared for unused rd x{:02}",
                     rd_from_d,
@@ -424,6 +453,7 @@ class ReservationStation(Module):
             is_branch_from_rs=is_branch_array[dispatch_index],
             cond_from_rs=cond_array[dispatch_index],
             flip_from_rs=flip_array[dispatch_index],
+            sq_pos_from_rs=sq_poses_array[dispatch_index],
         )
 
         # Send to LSQ
@@ -436,6 +466,8 @@ class ReservationStation(Module):
             rs2_val_from_rs=vk_array[dispatch_index],
             imm_val_from_rs=imm_array[dispatch_index],
             memory_from_rs=memory_array[dispatch_index],
-            pos_from_rs=lsq_poses_array[dispatch_index],
+            lsq_pos_from_rs=lsq_poses_array[dispatch_index],
+            lq_pos_from_rs=lq_poses_array[dispatch_index],
+            sq_pos_from_rs=sq_poses_array[dispatch_index],
             rob_dest_from_rs=rob_dest_array[dispatch_index],
         )

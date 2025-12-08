@@ -33,6 +33,7 @@ class ROB(Module):
                 "is_branch_from_rs": Port(Bits(1)),
                 "cond_from_rs": Port(Bits(RV32I_ALU.CNT)),
                 "flip_from_rs": Port(Bits(1)),
+                "sq_pos_from_rs": Port(Bits(32)),
             }
         )
         self.name = "ROB"
@@ -54,6 +55,8 @@ class ROB(Module):
         in_valid_from_lsq: Array,
         value_from_dcache: Array,
         rob_dest_from_lsq: Array,
+        commit_sq_pos_to_lsq: Array,
+        commit_valid_to_lsq: Array,
     ):
         pos = RegArray(Bits(32), 1)
 
@@ -78,6 +81,7 @@ class ROB(Module):
         is_branch_from_rs_array = RegArray(Bits(1), ROB_SIZE)
         cond_from_rs_array = RegArray(Bits(RV32I_ALU.CNT), ROB_SIZE)
         flip_from_rs_array = RegArray(Bits(1), ROB_SIZE)
+        sq_pos_from_rs_array = RegArray(Bits(32), ROB_SIZE)
         ready_array = RegArray(Bits(1), ROB_SIZE)
         value_array = RegArray(Bits(32), ROB_SIZE)
 
@@ -102,6 +106,7 @@ class ROB(Module):
             is_branch_from_rs,
             cond_from_rs,
             flip_from_rs,
+            sq_pos_from_rs,
         ) = self.pop_all_ports(False)
 
         with Condition(revert_flag_cdb[0]):
@@ -162,8 +167,15 @@ class ROB(Module):
                     value_to_rs[0] = value_array[head]
 
                 with Condition(memory_from_rs_array[head][1:1] == Bits(1)(1)):
-                    log("store_type")
                     value_to_rs[0] = Bits(32)(0)
+                    commit_sq_pos_to_lsq[0] = sq_pos_from_rs_array[head]
+                    commit_valid_to_lsq[0] = Bits(1)(1)
+                    log(
+                        "store_type, commit_sq_pos_to_lsq[0] = {}",
+                        sq_pos_from_rs_array[head],
+                    )
+                with Condition(~(memory_from_rs_array[head][1:1] == Bits(1)(1))):
+                    commit_valid_to_lsq[0] = Bits(1)(0)
 
                 with Condition(is_branch_from_rs_array[head]):
                     log("is_branch_type, value_array[head] = {}", value_array[head])
@@ -219,6 +231,7 @@ class ROB(Module):
 
             with Condition(~commit_flag):
                 out_valid_to_rs[0] = Bits(1)(0)
+                commit_valid_to_lsq[0] = Bits(1)(0)
                 log(
                     "No commit, busy={}, ready={}, idx={}",
                     busy_array[pos[0]],
@@ -288,6 +301,7 @@ class ROB(Module):
                 is_branch_from_rs_array[idx] = is_branch_from_rs
                 cond_from_rs_array[idx] = cond_from_rs
                 flip_from_rs_array[idx] = flip_from_rs
+                sq_pos_from_rs_array[idx] = sq_pos_from_rs
 
                 ready_flag = ~alu_flag & ~memory_from_rs[0:0]
                 (ready_array & self)[idx] = ready_flag.select(Bits(1)(1), Bits(1)(0))

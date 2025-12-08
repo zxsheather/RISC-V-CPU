@@ -22,6 +22,7 @@ from lsq import LSQ
 import argparse
 from unit_tests.tests import *
 
+
 class Driver(Module):
     def __init__(self):
         super().__init__(ports={})
@@ -30,7 +31,9 @@ class Driver(Module):
     def build(self, fetcher: Module):
         fetcher.async_called()
 
+
 DCACHE_DEPTH_LOG = 16
+
 
 def create_test_program(instructions=None):
     """创建测试程序 - 包含多种类型的指令"""
@@ -94,17 +97,22 @@ def build_and_run():
 
         dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG, init_file=None)
         dcache.name = "dcache"
-        
+
         lsb_out_valid_to_rob = RegArray(Bits(1), 1)
         lsb_rob_dest_to_rob = RegArray(Bits(32), 1)
+        rob_commit_sq_pos_to_lsq = RegArray(Bits(32), 1)
+        rob_commit_valid_to_lsq = RegArray(Bits(1), 1)
+
         lsq = LSQ()
         lsq.build(
             dcache=dcache,
             depth_log=DCACHE_DEPTH_LOG,
             out_valid_to_rob=lsb_out_valid_to_rob,
             rob_dest_to_rob=lsb_rob_dest_to_rob,
+            commit_sq_pos_from_rob=rob_commit_sq_pos_to_lsq,
+            commit_valid_from_rob=rob_commit_valid_to_lsq,
+            revert_flag_cdb=revert_flag_cdb,
         )
-    
 
         rob = ROB()
         rob.build(
@@ -122,8 +130,9 @@ def build_and_run():
             in_valid_from_lsq=lsb_out_valid_to_rob,
             value_from_dcache=dcache.dout,
             rob_dest_from_lsq=lsb_rob_dest_to_rob,
+            commit_sq_pos_to_lsq=rob_commit_sq_pos_to_lsq,
+            commit_valid_to_lsq=rob_commit_valid_to_lsq,
         )
-
 
         rs = ReservationStation()
         rs.build(
@@ -195,6 +204,15 @@ def build_and_run():
 
     print(f"✓ 仿真日志已保存至: {log_file_path}")
 
+    # Run Verilator simulation
+    if utils.has_verilator():
+        print("\n正在运行 Verilog 仿真...")
+        verilog_log = utils.run_verilator(verilog_path)
+        verilog_log_path = f"{workspace}/simulation.verilog.log"
+        with open(verilog_log_path, "w") as f:
+            f.write(verilog_log)
+        print(f"✓ Verilog 仿真日志已保存至: {verilog_log_path}")
+
     print("\n" + "=" * 70)
     print("仿真输出:")
     print("=" * 70)
@@ -210,7 +228,12 @@ def build_and_run():
 
 def main():
     parser = argparse.ArgumentParser(description="Run Toy CPU tests")
-    parser.add_argument("--test", choices=["default", "war", "waw", "raw", "ls1", "br1"], default="default", help="Select test case")
+    parser.add_argument(
+        "--test",
+        choices=["default", "war", "waw", "raw", "ls1", "br1", "brm1"],
+        default="default",
+        help="Select test case",
+    )
     args = parser.parse_args()
 
     print("=" * 70)
@@ -228,6 +251,8 @@ def main():
         instructions = load_store_test_1()
     elif args.test == "br1":
         instructions = branch_test()
+    elif args.test == "brm1":
+        instructions = branch_mem_test()
     # 1. 创建测试程序
     print("\n[步骤 1] 创建测试程序")
     create_test_program(instructions)

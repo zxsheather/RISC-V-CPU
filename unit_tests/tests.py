@@ -116,3 +116,33 @@ def branch_test():
         nop(),
         nop()
     ]
+
+def branch_mem_test():
+    """
+    Branch Memory Test
+    Test interaction between branch and load/store instructions.
+    """
+    return [
+        addi(1, 0, 64),   # x1 = 64 (Base address)
+        addi(2, 0, 42),   # x2 = 42 (Value to store)
+        
+        # Store x2 to Mem[64]
+        sw(1, 2, 0),
+        
+        # Load from Mem[64] to x3
+        lw(3, 1, 0),      # x3 should be 42
+        
+        # Branch if x3 == x2 (42 == 42), should be taken. Target is PC + 12.
+        beq(3, 2, 12),    
+        
+        addi(4, 0, 0),    # x4 = 0 (Should be skipped)
+        sw(1, 4, 4),      # Store 0 to Mem[68] (Should be skipped)
+        
+        # Target:
+        addi(5, 0, 1),    # x5 = 1
+        sw(1, 5, 8),      # Store 1 to Mem[72] indicating success
+        
+        nop(),
+        nop(),
+        nop()
+    ]
