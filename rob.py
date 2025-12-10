@@ -1,12 +1,8 @@
 from assassyn.frontend import *
 from instruction import *
+from utils import *
 
 ROB_SIZE = 32
-
-
-class ROBWritePort(Module):
-    def __init__(self):
-        super().__init__(ports={})
 
 
 class ROB(Module):
@@ -61,7 +57,8 @@ class ROB(Module):
         pos = RegArray(Bits(32), 1)
 
         # ROB table
-        busy_array = RegArray(Bits(1), ROB_SIZE)
+        # busy_array = RegArray(Bits(1), ROB_SIZE)
+        busy_array_d = [RegArray(Bits(1), 1) for _ in range(ROB_SIZE)]
         alu_array = RegArray(Bits(RV32I_ALU.CNT), ROB_SIZE)
         alu_valid_array = RegArray(Bits(1), ROB_SIZE)
         memory_from_rs_array = RegArray(Bits(2), ROB_SIZE)
@@ -82,8 +79,10 @@ class ROB(Module):
         cond_from_rs_array = RegArray(Bits(RV32I_ALU.CNT), ROB_SIZE)
         flip_from_rs_array = RegArray(Bits(1), ROB_SIZE)
         sq_pos_from_rs_array = RegArray(Bits(32), ROB_SIZE)
-        ready_array = RegArray(Bits(1), ROB_SIZE)
-        value_array = RegArray(Bits(32), ROB_SIZE)
+        # ready_array = RegArray(Bits(1), ROB_SIZE)
+        # value_array = RegArray(Bits(32), ROB_SIZE)
+        ready_array_d = [RegArray(Bits(1), 1) for _ in range(ROB_SIZE)]
+        value_array_d = [RegArray(Bits(32), 1) for _ in range(ROB_SIZE)]
 
         (
             has_entry_from_rs,
@@ -112,18 +111,18 @@ class ROB(Module):
         with Condition(revert_flag_cdb[0]):
             revert_flag_cdb[0] = Bits(1)(0)
             log("Resume after revert")
-    
+
         with Condition(~revert_flag_cdb[0]):
             # commit head entry
-            write_port_commit = ROBWritePort()
-            commit_flag = busy_array[pos[0]] & ready_array[pos[0]]
+            commit_flag = read_mux(busy_array_d, pos[0]) & read_mux(
+                ready_array_d, pos[0])
             bypass_valid_to_if[0] = commit_flag & (
                 is_branch_from_rs_array[pos[0]] | is_jalr_from_rs_array[pos[0]]
             )
             revert_flag = (
                 commit_flag
                 & is_branch_from_rs_array[pos[0]]
-                & ((value_array[pos[0]][0:0] ^ jump_array[pos[0]][0:0]))
+                & ((read_mux(value_array_d, pos[0])[0:0] ^ jump_array[pos[0]][0:0]))
             )
             revert_flag_cdb[0] = revert_flag
             with Condition(commit_flag):
@@ -131,20 +130,22 @@ class ROB(Module):
                     "Committing entry rob_idx={}, dest={}, value={}, rs_idx={}",
                     pos[0],
                     dest_array[pos[0]],
-                    value_array[pos[0]],
+                    read_mux(value_array_d, pos[0]),
                     ind_array[pos[0]],
                 )
                 index_to_rs[0] = ind_array[pos[0]]
                 head = pos[0]
                 with Condition(~revert_flag):
                     # If revert triggered, clearing entries is handled later
-                    (busy_array & write_port_commit)[head] = Bits(1)(0)
-                    pos[0] = (head.bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32))
-                (ready_array & write_port_commit)[head] = Bits(1)(0)
+                    write_1hot(busy_array_d, head, Bits(1)(0))
+                    pos[0] = (head.bitcast(Int(32)) +
+                              Int(32)(1)).bitcast(Bits(32))
+                write_1hot(ready_array_d, head, Bits(1)(0))
                 with Condition(
                     is_jal_from_rs_array[head] | is_jalr_from_rs_array[head]
                 ):
-                    log("is_jal/jalr, value_to_rs[0] = {}", value_array[head])
+                    log("is_jal/jalr, value_to_rs[0] = {}",
+                        read_mux(value_array_d, head))
                     value_to_rs[0] = pc_array[head] + Bits(32)(4)
 
                 with Condition(is_auipc_from_rs_array[head]):
@@ -159,12 +160,14 @@ class ROB(Module):
                     value_to_rs[0] = imm_array[head]
 
                 with Condition(alu_valid_array[head]):
-                    log("alu_type, value_to_rs[0] = {}", value_array[head])
-                    value_to_rs[0] = value_array[head]
+                    log("alu_type, value_to_rs[0] = {}",
+                        read_mux(value_array_d, head))
+                    value_to_rs[0] = read_mux(value_array_d, head)
 
                 with Condition(memory_from_rs_array[head][0:0] == Bits(1)(1)):
-                    log("load_type, value_to_rs[0] = {}", value_array[head])
-                    value_to_rs[0] = value_array[head]
+                    log("load_type, value_to_rs[0] = {}", read_mux(
+                        value_array_d, head))
+                    value_to_rs[0] = read_mux(value_array_d, head)
 
                 with Condition(memory_from_rs_array[head][1:1] == Bits(1)(1)):
                     value_to_rs[0] = Bits(32)(0)
@@ -178,16 +181,18 @@ class ROB(Module):
                     commit_valid_to_lsq[0] = Bits(1)(0)
 
                 with Condition(is_branch_from_rs_array[head]):
-                    log("is_branch_type, value_array[head] = {}", value_array[head])
-                    predict_result = ~(value_array[head][0:0] ^ jump_array[head][0:0])
+                    log("is_branch_type, value_array[head] = {}",
+                        read_mux(value_array_d, head))
+                    predict_result = ~(
+                        read_mux(value_array_d, head)[0:0] ^ jump_array[head][0:0])
 
                     # Branch taken
-                    with Condition(value_array[head][0:0]):
+                    with Condition(read_mux(value_array_d, head)[0:0]):
                         updated_pc_to_if[0] = pc_array[head] + imm_array[head]
                         is_jump_to_if[0] = Bits(1)(1)
 
                     # Branch not taken
-                    with Condition(~value_array[head][0:0]):
+                    with Condition(~read_mux(value_array_d, head)[0:0]):
                         updated_pc_to_if[0] = pc_array[head] + Bits(32)(4)
                         is_jump_to_if[0] = Bits(1)(0)
 
@@ -197,7 +202,7 @@ class ROB(Module):
                             head,
                             pc_array[head],
                             jump_array[head][0:0],
-                            value_array[head][0:0],
+                            read_mux(value_array_d, head)[0:0],
                         )
 
                     with Condition(predict_result):
@@ -206,7 +211,7 @@ class ROB(Module):
                             head,
                             pc_array[head],
                             jump_array[head][0:0],
-                            value_array[head][0:0],
+                            read_mux(value_array_d, head)[0:0],
                         )
 
                 with Condition(is_jalr_from_rs_array[head]):
@@ -217,7 +222,6 @@ class ROB(Module):
 
                 out_valid_to_rs[0] = Bits(1)(1)
 
-            revert_ports = [ROBWritePort() for _ in range(ROB_SIZE)]
             with Condition(revert_flag):
                 log(
                     "Revert triggered at idx={}, pc={}",
@@ -227,29 +231,29 @@ class ROB(Module):
                 pos[0] = Bits(32)(0)
                 # Clear all entries
                 for i in range(ROB_SIZE):
-                    (busy_array & revert_ports[i])[i] = Bits(1)(0)
+                    busy_array_d[i][0] = Bits(1)(0)
 
             with Condition(~commit_flag):
                 out_valid_to_rs[0] = Bits(1)(0)
                 commit_valid_to_lsq[0] = Bits(1)(0)
                 log(
                     "No commit, busy={}, ready={}, idx={}",
-                    busy_array[pos[0]],
-                    ready_array[pos[0]],
+                    read_mux(busy_array_d, pos[0]),
+                    read_mux(ready_array_d, pos[0]),
                     pos[0],
                 )
 
             # receive from ALU
-            write_port_alu = ROBWritePort()
             with Condition(alu_valid_from_alu[0] & ~revert_flag):
                 alu_idx = rob_index_from_alu[0]
-                (ready_array & write_port_alu)[alu_idx] = Bits(1)(1)
-                (value_array & write_port_alu)[alu_idx] = flip_from_rs_array[
-                    alu_idx
-                ].select(
-                    alu_value_from_alu[0] ^ Bits(32)(1),
-                    alu_value_from_alu[0],
-                )
+                write_1hot(ready_array_d, alu_idx, Bits(1)(1))
+                write_1hot(value_array_d, alu_idx,
+                           flip_from_rs_array[
+                               alu_idx
+                           ].select(
+                               alu_value_from_alu[0] ^ Bits(32)(1),
+                               alu_value_from_alu[0],
+                           ))
                 log(
                     "Received from ALU idx={}, value=0x{:08x}",
                     alu_idx,
@@ -257,11 +261,10 @@ class ROB(Module):
                 )
 
             # receive from LSQ
-            write_port_lsq = ROBWritePort()
             with Condition(in_valid_from_lsq[0] & ~revert_flag):
                 lsq_idx = rob_dest_from_lsq[0] & Bits(32)(ROB_SIZE - 1)
-                (ready_array & write_port_lsq)[lsq_idx] = Bits(1)(1)
-                (value_array & write_port_lsq)[lsq_idx] = value_from_dcache[0]
+                write_1hot(ready_array_d, lsq_idx, Bits(1)(1))
+                write_1hot(value_array_d, lsq_idx, value_from_dcache[0])
                 log(
                     "Received from LSQ idx={}, value=0x{:08x}",
                     lsq_idx,
@@ -281,7 +284,7 @@ class ROB(Module):
             )
 
             with Condition(has_entry_from_rs & ~revert_flag):
-                busy_array[idx] = Bits(1)(1)
+                write_1hot(busy_array_d, idx, Bits(1)(1))
                 alu_array[idx] = alu_from_rs
                 rs1_val_array[idx] = rs1_val_from_rs
                 rs1_valid_array[idx] = rs1_valid_from_rs
@@ -304,8 +307,8 @@ class ROB(Module):
                 sq_pos_from_rs_array[idx] = sq_pos_from_rs
 
                 ready_flag = ~alu_flag & ~memory_from_rs[0:0]
-                (ready_array & self)[idx] = ready_flag.select(Bits(1)(1), Bits(1)(0))
-
+                write_1hot(ready_array_d, idx, ready_flag.select(
+                    Bits(1)(1), Bits(1)(0)))
                 log(
                     "Appended entry idx={}, ind_rs={}, pc={}, rs1={}, rs2={}, imm={}, alu={}, memory={}, alu_valid={}, ready={}, cond={}, flip={}",
                     idx,
