@@ -56,6 +56,28 @@ class Decoder(Module):
             jump_from_d=Bits(1)(0),
         )
 
+        is_jal = signals.is_jal
+        is_branch = signals.is_branch
+        
+        updated_pc = (is_jal | is_branch).select(
+            (fetch_pc_from_fi.bitcast(UInt(32)) + signals.imm.bitcast(UInt(32))).bitcast(Bits(32)),
+            (fetch_pc_from_fi.bitcast(UInt(32)) + Bits(32)(4)).bitcast(Bits(32)),
+        )
+
+        with Condition(is_jal):
+            log(
+                "Decoder detected JAL, updated_pc=0x{:08x}",
+                updated_pc,
+            )
+
+        with Condition(is_branch):
+            log(
+                "Decoder detected BRANCH, updated_pc=0x{:08x}",
+                updated_pc,
+            )
+
+        return is_jal, is_branch, updated_pc
+
 
 @rewrite_assign
 def decode_logic(inst):

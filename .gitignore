@@ -4,3 +4,5 @@ workspace/
 .vscode/
 .DS_Store
 *.pyc
+filter_log.py
+.build_cache.json

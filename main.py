@@ -146,12 +146,15 @@ def build_and_run():
         )
 
         decoder = Decoder()
-        decoder.build(icache.dout, rs, revert_flag_cdb)
+        is_jal, is_branch, updated_pc = decoder.build(icache.dout, rs, revert_flag_cdb)
 
         fetch_impl = FetcherImpl()
         fetch_impl.build(
             pc_addr_from_f=pc_addr,
             pc_reg_from_f=pc_reg,
+            is_jal_from_d=is_jal,
+            is_branch_from_d=is_branch,
+            updated_pc_from_d=updated_pc,
             on_br_from_d=Bits(1)(0),  # Not used currently
             icache=icache,
             depth_log=depth_log,
@@ -230,7 +233,19 @@ def main():
     parser = argparse.ArgumentParser(description="Run Toy CPU tests")
     parser.add_argument(
         "--test",
-        choices=["default", "war", "waw", "raw", "ls1", "br1", "brm1"],
+        choices=[
+            "default",
+            "war",
+            "waw",
+            "raw",
+            "ls1",
+            "br1",
+            "brm1",
+            "lui_auipc",
+            "jal",
+            "jalr",
+            "jal_jalr",
+        ],
         default="default",
         help="Select test case",
     )
@@ -253,6 +268,14 @@ def main():
         instructions = branch_test()
     elif args.test == "brm1":
         instructions = branch_mem_test()
+    elif args.test == "lui_auipc":
+        instructions = lui_auipc_test()
+    elif args.test == "jal":
+        instructions = jal_test()
+    elif args.test == "jalr":
+        instructions = jalr_test()
+    elif args.test == "jal_jalr":
+        instructions = jal_jalr_combined_test()
     # 1. 创建测试程序
     print("\n[步骤 1] 创建测试程序")
     create_test_program(instructions)

@@ -146,3 +146,104 @@ def branch_mem_test():
         nop(),
         nop()
     ]
+
+def lui_auipc_test():
+    """
+    LUI and AUIPC Test
+    """
+    return [
+        # LUI: x1 = 0x12345 << 12 = 0x12345000
+        lui(1, 0x12345),
+        
+        # AUIPC: x2 = PC + (0x10000 << 12). 
+        # Assuming PC starts at 4 (since it's the second instruction),
+        # x2 = 4 + 0x10000000 = 0x10000004
+        auipc(2, 0x10000),
+        
+        nop(),
+        nop(),
+        nop()
+    ]
+
+def jal_test():
+    """
+    JAL Test (Jump and Link)
+    Test JAL instruction for unconditional jumps and return address storage.
+    """
+    return [
+        addi(1, 0, 0),    # x1 = 0 (Initialize)
+        
+        # JAL: Jump to offset 16 (skip next 3 instructions), save PC+4 in x2
+        jal(2, 16),       # x2 = PC + 4 (return address)
+        
+        addi(1, 0, 0xBAD),# x1 = 0xBAD (Should be skipped)
+        addi(3, 0, 0xBAD),# x3 = 0xBAD (Should be skipped)
+        addi(4, 0, 0xBAD),# x4 = 0xBAD (Should be skipped)
+        
+        # Target: PC + 16
+        addi(1, 0, 42),   # x1 = 42 (Should execute)
+        
+        # Test return address: x2 should contain the address of the skipped instruction
+        addi(5, 2, 0),    # x5 = x2 (copy return address)
+        
+        nop(),
+        nop(),
+        nop()
+    ]
+
+def jalr_test():
+    """
+    JALR Test (Jump and Link Register)
+    Test JALR instruction for computed jumps and function returns.
+    """
+    return [
+        addi(1, 0, 0),    # x1 = 0 (Initialize)
+        
+        # Set up target address in x3 (PC of instruction at offset 20)
+        auipc(3, 0),      # x3 = current PC
+        addi(3, 3, 20),   # x3 = PC + 20 (target address)
+        
+        # JALR: Jump to address in x3, save return address in x2
+        jalr(2, 3, 0),    # PC = x3 + 0, x2 = PC + 4
+        
+        addi(1, 0, 0xBAD),# x1 = 0xBAD (Should be skipped)
+        addi(4, 0, 0xBAD),# x4 = 0xBAD (Should be skipped)
+        
+        # Target address
+        addi(1, 0, 99),   # x1 = 99 (Should execute)
+        
+        # Use return address
+        addi(5, 2, 0),    # x5 = x2 (copy return address)
+        
+        nop(),
+        nop(),
+        nop()
+    ]
+
+def jal_jalr_combined_test():
+    """
+    JAL and JALR Combined Test
+    Test function call and return simulation using JAL and JALR.
+    """
+    return [
+        addi(10, 0, 5),   # x10 = 5 (argument)
+        
+        # Call "function" using JAL
+        jal(1, 12),       # Jump to function, x1 = return address
+        
+        # Return point
+        addi(11, 10, 0),  # x11 = x10 (result)
+        jal(0, 20),       # Jump to end
+        
+        # "Function" code: multiply x10 by 2
+        addi(10, 10, 0),  # x10 = x10 (load argument)
+        add(10, 10, 10),  # x10 = x10 + x10 = x10 * 2
+        
+        # Return using JALR
+        jalr(0, 1, 0),    # Jump to address in x1 (return address)
+        
+        # End
+        nop(),
+        nop(),
+        nop()
+    ]

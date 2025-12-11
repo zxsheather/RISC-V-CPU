@@ -25,6 +25,9 @@ class FetcherImpl(Downstream):
         self,
         pc_reg_from_f: Array,
         pc_addr_from_f: Value,
+        is_jal_from_d: Value,
+        is_branch_from_d: Value,
+        updated_pc_from_d: Value,
         on_br_from_d: Value,
         icache: SRAM,
         depth_log: int,
@@ -42,8 +45,18 @@ class FetcherImpl(Downstream):
         used, but reserved for future improvement.
         """
         fetch_state = RegArray(Bits(1), 1, initializer=[1])
+        is_jal = is_jal_from_d.optional(Bits(1)(0))
+        updated_pc_from_d = updated_pc_from_d.optional(Bits(32)(0))
+        fetch_addr = is_jal.select(
+            updated_pc_from_d, pc_addr_from_f
+        )
+        fetch_addr = revert_flag_cdb[0].select(updated_pc_from_rob[0], fetch_addr)
+        with Condition(is_jal):
+            log(
+                "Fetcher received JAL PC=0x{:08x}",
+                updated_pc_from_d,
+            )
 
-        fetch_addr = revert_flag_cdb[0].select(updated_pc_from_rob[0], pc_addr_from_f)
         with Condition(revert_flag_cdb[0]):
             log(
                 "Fetcher received redirect PC=0x{:08x}, is_jump={}",
