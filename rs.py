@@ -25,6 +25,8 @@ class ReservationStation(Module):
         need_update_from_rob: Array,
         in_index_from_rob: Array,
         value_from_rob: Array,
+        in_valid_from_lsq: Array,
+        sq_pos_from_lsq: Array,
         rob: Module,
         lsq: Module,
         ifetch_continue_flag: Array,
@@ -125,6 +127,15 @@ class ReservationStation(Module):
         sq_poses_array = RegArray(Bits(32), RS_SIZE)
         sq_pos = RegArray(Bits(32), 1)
 
+        # Update sq_pos from LSQ after revert
+        with Condition(in_valid_from_lsq[0]):
+            log(
+                "RS received LSQ sq_pos={} valid={}",
+                sq_pos_from_lsq[0].bitcast(UInt(32)),
+                in_valid_from_lsq[0].bitcast(UInt(1)),
+            )
+            sq_pos[0] = sq_pos_from_lsq[0]
+
         new_val = in_valid_from_rob[0].select(value_from_rob[0], Bits(32)(0))
         new_val = (rd_array[in_index_from_rob[0]] == Bits(32)(0)).select(
             Bits(32)(0), new_val
@@ -159,9 +170,9 @@ class ReservationStation(Module):
             update_index = in_index_from_rob[0]
             with Condition(~revert_flag):
                 write_1hot(busy_array_d, update_index, Bits(1)(0))
-            busy_entry_count[0] = (
-                busy_entry_count[0].bitcast(Int(32)) - Int(32)(1)
-            ).bitcast(Bits(32))
+                busy_entry_count[0] = (
+                    busy_entry_count[0].bitcast(Int(32)) - Int(32)(1)
+                ).bitcast(Bits(32))
             log(
                 "Committing from ROB idx={}, value=0x{:08x}",
                 update_index,
@@ -207,6 +218,7 @@ class ReservationStation(Module):
             log(
                 "Revert triggered, clearing all entries",
             )
+            busy_entry_count[0] = Bits(32)(0)
             for i in range(RS_SIZE):
                 busy_array_d[i][0] = Bits(1)(0)
             for i in range(32):
@@ -265,8 +277,8 @@ class ReservationStation(Module):
                 log(
                     "RS entry index {} assigned LSQ load position {}, LQ position {}",
                     newly_append_ind,
-                    lsq_poses_array[newly_append_ind],
-                    lq_poses_array[newly_append_ind],
+                    lsq_pos[0],
+                    lq_pos[0],
                 )
 
             with Condition(memory_from_d[1:1] == Bits(1)(1)):  # Store
@@ -279,8 +291,8 @@ class ReservationStation(Module):
                 log(
                     "RS entry index {} assigned LSQ store position {}, SQ position {}",
                     newly_append_ind,
-                    lsq_poses_array[newly_append_ind],
-                    sq_poses_array[newly_append_ind],
+                    lsq_pos[0],
+                    sq_pos[0],
                 )
 
             with Condition(rs1_valid_from_d):

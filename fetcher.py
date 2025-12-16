@@ -27,11 +27,13 @@ class FetcherImpl(Downstream):
         pc_addr_from_f: Value,
         is_jal_from_d: Value,
         is_branch_from_d: Value,
+        is_nop_from_d: Value,
         updated_pc_from_d: Value,
         on_br_from_d: Value,
         icache: SRAM,
         depth_log: int,
         decoder: Decoder,
+        continue_flag_from_rs: Array,
         in_valid_from_rob: Array,
         updated_pc_from_rob: Array,
         is_jump_from_rob: Array,
@@ -47,9 +49,7 @@ class FetcherImpl(Downstream):
         fetch_state = RegArray(Bits(1), 1, initializer=[1])
         is_jal = is_jal_from_d.optional(Bits(1)(0))
         updated_pc_from_d = updated_pc_from_d.optional(Bits(32)(0))
-        fetch_addr = is_jal.select(
-            updated_pc_from_d, pc_addr_from_f
-        )
+        fetch_addr = is_jal.select(updated_pc_from_d, pc_addr_from_f)
         fetch_addr = revert_flag_cdb[0].select(updated_pc_from_rob[0], fetch_addr)
         with Condition(is_jal):
             log(
@@ -64,9 +64,13 @@ class FetcherImpl(Downstream):
                 is_jump_from_rob[0].bitcast(UInt(1)),
             )
 
-        should_fetch = fetch_state[0]
+        should_fetch = continue_flag_from_rs[0]
+        with Condition(~should_fetch):
+            log("Fetcher is stalled this cycle")
 
-        next_pc = (fetch_addr.bitcast(UInt(32)) + UInt(32)(4)).bitcast(Bits(32))
+        next_pc = should_fetch.select(
+            fetch_addr.bitcast(UInt(32)) + UInt(32)(4), fetch_addr.bitcast(UInt(32))
+        ).bitcast(Bits(32))
 
         log(
             "PC=0x{:08x}, next_PC=0x{:08x}, should_fetch={}, on_br={}",
@@ -78,7 +82,7 @@ class FetcherImpl(Downstream):
 
         fetch_state[0] = should_fetch
 
-        pc_reg_from_f[0] = should_fetch.select(next_pc, pc_reg_from_f[0])
+        pc_reg_from_f[0] = next_pc
 
         icache.build(
             we=Bits(1)(0),

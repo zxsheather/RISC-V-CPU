@@ -4,16 +4,6 @@ from utils import *
 LSQ_SIZE = 16
 
 
-def write_1hot(arrs, idx_val, payload):
-    for i, arr in enumerate(arrs):
-        with Condition(idx_val == Bits(32)(i)):
-            arr[0] = payload
-
-
-def read_mux(arrs, idx_val):
-    return idx_val.case({Bits(32)(i): arrs[i][0] for i, arr in enumerate(arrs)} | {None: arrs[0][0]})
-
-
 class LSQ(Module):
     def __init__(self):
         super().__init__(
@@ -40,6 +30,8 @@ class LSQ(Module):
         rob_dest_to_rob,
         commit_sq_pos_from_rob: Array,
         commit_valid_from_rob: Array,
+        update_sq_pos_to_rs: Array,
+        valid_to_rs: Array,
         revert_flag_cdb: Array,
     ):
         (
@@ -71,39 +63,80 @@ class LSQ(Module):
         sq_data_array = RegArray(Bits(32), LSQ_SIZE)
         # sq_is_committed_array = RegArray(Bits(1), LSQ_SIZE)
         # sq_lsq_pos_array = RegArray(Bits(32), LSQ_SIZE)
-        sq_is_committed_array_d = [
-            RegArray(Bits(1), 1) for _ in range(LSQ_SIZE)]
+        sq_is_committed_array_d = [RegArray(Bits(1), 1) for _ in range(LSQ_SIZE)]
         sq_lsq_pos_array_d = [RegArray(Bits(32), 1) for _ in range(LSQ_SIZE)]
 
         # Commit SQ entries from ROB
         with Condition(commit_valid_from_rob[0]):
-            write_1hot(sq_is_committed_array_d, commit_sq_pos_from_rob[0] & Bits(
-                32)(LSQ_SIZE - 1), Bits(1)(1))
+            write_1hot(
+                sq_is_committed_array_d,
+                commit_sq_pos_from_rob[0] & Bits(32)(LSQ_SIZE - 1),
+                Bits(1)(1),
+            )
             log(
                 "Receive commit for SQ entry: sq_pos={}",
                 commit_sq_pos_from_rob[0].bitcast(UInt(32)),
             )
 
         # Revert on misprediction
+        sq_pos_need_update = read_mux(sq_is_committed_array_d, sq_head[0]) & read_mux(
+            sq_busy_array_d, sq_head[0]
+        )
+        valid_to_rs[0] = revert_flag_cdb[0] & sq_pos_need_update
         with Condition(revert_flag_cdb[0]):
-            log(
-                "Received revert signal, flushing LSQ"
-            )
-            lsq_head[0] = Bits(32)(1)
-            lq_head[0] = Bits(32)(0)
-            for _, arr in enumerate(lq_busy_array_d):
-                arr[0] = Bits(1)(0)
-            for _, arr in enumerate(sq_busy_array_d):
-                arr[0] = Bits(1)(0)
-            for _, arr in enumerate(sq_lsq_pos_array_d):
-                arr[0] = Bits(32)(0)
+            log("Received revert signal, flushing LSQ")
 
-            with Condition(read_mux(sq_is_committed_array_d, sq_head[0]) == Bits(1)(0)):
+            with Condition(~sq_pos_need_update):
                 log(
                     "sq_is_committed_array[{}] == 0 on revert, setting sq_head to 0",
                     sq_head[0].bitcast(UInt(32)),
                 )
                 sq_head[0] = Bits(32)(0)
+
+            with Condition(sq_pos_need_update):
+                log(
+                    "sq_is_committed_array[{}] == 1 on revert, keeping sq_head as is",
+                    sq_head[0].bitcast(UInt(32)),
+                )
+
+                # Find the next sq index for rs
+                """ 
+                    Note: committed entries are not flushed, so we need to find the max committed sq pos.
+                    And committed entries are continuous from sq_head to higher positions Since 
+                    ROB commits in order.
+                """
+                max_sq_committed_index = Bits(32)(0)
+                max_lsq_pos = Bits(32)(0)
+                for i in range(LSQ_SIZE):
+                    is_committed_sq = (
+                        sq_is_committed_array_d[i][0] & sq_busy_array_d[i][0]
+                    )
+                    is_selected_sq = is_committed_sq & (
+                        sq_lsq_pos_array_d[i][0] > max_lsq_pos
+                    )
+                    max_lsq_pos = is_selected_sq.select(
+                        sq_lsq_pos_array_d[i][0], max_lsq_pos
+                    )
+                    max_sq_committed_index = is_selected_sq.select(
+                        Bits(32)(i), max_sq_committed_index
+                    )
+
+                update_sq_pos_to_rs[0] = (max_sq_committed_index + Bits(32)(1)).bitcast(
+                    Bits(32)
+                )
+                log(
+                    "After revert, updating RS sq_pos to {}",
+                    (max_sq_committed_index + Bits(32)(1)).bitcast(Bits(32)),
+                )
+
+            lsq_head[0] = Bits(32)(1)
+            lq_head[0] = Bits(32)(0)
+            for _, arr in enumerate(lq_busy_array_d):
+                arr[0] = Bits(1)(0)
+            for i, arr in enumerate(sq_busy_array_d):
+                arr[0] = sq_busy_array_d[i][0] & sq_is_committed_array_d[i][0]
+            for _, arr in enumerate(sq_lsq_pos_array_d):
+                arr[0] = Bits(32)(0)
 
         with Condition(has_entry_from_rs & (~revert_flag_cdb[0])):
             with Condition(memory_from_rs[0:0] == Bits(1)(1)):  # Load
@@ -144,19 +177,23 @@ class LSQ(Module):
         # Execute head entry
         store_flag = (
             read_mux(sq_busy_array_d, sq_head[0])
-            & ((read_mux(sq_lsq_pos_array_d, sq_head[0]) == lsq_head[0]) | (read_mux(sq_lsq_pos_array_d, sq_head[0]) == Bits(32)(0)))
+            & (
+                (read_mux(sq_lsq_pos_array_d, sq_head[0]) == lsq_head[0])
+                | (read_mux(sq_lsq_pos_array_d, sq_head[0]) == Bits(32)(0))
+            )
             & read_mux(sq_is_committed_array_d, sq_head[0])
             & ~revert_flag_cdb[0]
         )
 
-        load_flag = read_mux(lq_busy_array_d, lq_head[0]) & (
-            lq_lsq_pos_array[lq_head[0]] == lsq_head[0]
-        ) & (~store_flag) & (~revert_flag_cdb[0])
+        load_flag = (
+            read_mux(lq_busy_array_d, lq_head[0])
+            & (lq_lsq_pos_array[lq_head[0]] == lsq_head[0])
+            & (~store_flag)
+            & (~revert_flag_cdb[0])
+        )
         requested_addr = load_flag.select(
-            lq_addr_array[lq_head[0]][2: 2 +
-                                      depth_log - 1].bitcast(UInt(depth_log)),
-            sq_addr_array[sq_head[0]][2: 2 +
-                                      depth_log - 1].bitcast(UInt(depth_log)),
+            lq_addr_array[lq_head[0]][2 : 2 + depth_log - 1].bitcast(UInt(depth_log)),
+            sq_addr_array[sq_head[0]][2 : 2 + depth_log - 1].bitcast(UInt(depth_log)),
         )
         out_valid_to_rob[0] = load_flag
         rob_dest_to_rob[0] = load_flag.select(
@@ -171,8 +208,9 @@ class LSQ(Module):
             )
 
             with Condition(load_flag):
-                lsq_head[0] = (lsq_head[0].bitcast(Int(32)) +
-                               Int(32)(1)).bitcast(Bits(32))
+                lsq_head[0] = (lsq_head[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
+                    Bits(32)
+                )
                 write_1hot(lq_busy_array_d, lq_head[0], Bits(1)(0))
                 log(
                     "Load: LQ index={}, addr=0x{:08x}",
@@ -184,18 +222,15 @@ class LSQ(Module):
                 )
 
             with Condition(store_flag):
-                with Condition(
-                    read_mux(sq_lsq_pos_array_d, sq_head[0]) == Bits(32)(0)
-                ):
+                with Condition(read_mux(sq_lsq_pos_array_d, sq_head[0]) == Bits(32)(0)):
 
                     log(
                         "Store with lsq_pos=0, treating as committed already before flushing"
                     )
-                with Condition(
-                    read_mux(sq_lsq_pos_array_d, sq_head[0]) != Bits(32)(0)
-                ):
-                    lsq_head[0] = (lsq_head[0].bitcast(
-                        Int(32)) + Int(32)(1)).bitcast(Bits(32))
+                with Condition(read_mux(sq_lsq_pos_array_d, sq_head[0]) != Bits(32)(0)):
+                    lsq_head[0] = (lsq_head[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
+                        Bits(32)
+                    )
                 write_1hot(sq_busy_array_d, sq_head[0], Bits(1)(0))
                 log(
                     "Store: SQ index={}, addr=0x{:08x}, data=0x{:08x}, is_committed={}",

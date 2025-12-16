@@ -76,7 +76,13 @@ class Decoder(Module):
                 updated_pc,
             )
 
-        return is_jal, is_branch, updated_pc
+        nop = inst == Bits(32)(0x00000013)  # ADDI x0, x0, 0
+        with Condition(inst==Bits(32)(0x00000000)):
+            log(
+                "Decoder detected NOP instruction"
+            )
+
+        return is_jal, is_branch, updated_pc, nop
 
 
 @rewrite_assign

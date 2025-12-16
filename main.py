@@ -96,6 +96,9 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
         rob_bypass_index_to_rs = RegArray(Bits(32), 1)
         revert_flag_cdb = RegArray(Bits(1), 1)
 
+        lsq_bypass_sq_pos_to_rs = RegArray(Bits(32), 1)
+        lsq_bypass_valid_to_rs = RegArray(Bits(1), 1)
+
         dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG, init_file=dcache_init_file)
         dcache.name = "dcache"
 
@@ -113,6 +116,8 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
             commit_sq_pos_from_rob=rob_commit_sq_pos_to_lsq,
             commit_valid_from_rob=rob_commit_valid_to_lsq,
             revert_flag_cdb=revert_flag_cdb,
+            valid_to_rs=lsq_bypass_valid_to_rs,
+            update_sq_pos_to_rs=lsq_bypass_sq_pos_to_rs,
         )
 
         rob = ROB()
@@ -142,6 +147,8 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
             need_update_from_rob=rob_bypass_need_update_to_rs,
             in_index_from_rob=rob_bypass_index_to_rs,
             value_from_rob=rob_bypass_value_to_rs,
+            in_valid_from_lsq=lsq_bypass_valid_to_rs,
+            sq_pos_from_lsq=lsq_bypass_sq_pos_to_rs,
             ifetch_continue_flag=ifetch_continue_flag,
             rob=rob,
             lsq=lsq,
@@ -149,7 +156,7 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
         )
 
         decoder = Decoder()
-        is_jal, is_branch, updated_pc = decoder.build(icache.dout, rs, revert_flag_cdb)
+        is_jal, is_branch, updated_pc, is_nop = decoder.build(icache.dout, rs, revert_flag_cdb)
 
         fetch_impl = FetcherImpl()
         fetch_impl.build(
@@ -157,11 +164,13 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
             pc_reg_from_f=pc_reg,
             is_jal_from_d=is_jal,
             is_branch_from_d=is_branch,
+            is_nop_from_d=is_nop,
             updated_pc_from_d=updated_pc,
             on_br_from_d=Bits(1)(0),  # Not used currently
             icache=icache,
             depth_log=depth_log,
             decoder=decoder,
+            continue_flag_from_rs=ifetch_continue_flag,
             in_valid_from_rob=rob_bypass_valid_to_if,
             updated_pc_from_rob=rob_bypass_pc_to_if,
             is_jump_from_rob=rob_bypass_is_jump_to_if,
