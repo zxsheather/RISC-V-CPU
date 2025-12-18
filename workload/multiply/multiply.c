@@ -54,10 +54,5 @@ int main() {
             errors++;
         }
     }
-    if (errors == 0) {
-        asm("ecall");
-    } else {
-        asm("ebreak");
-    }
     return errors;
 }

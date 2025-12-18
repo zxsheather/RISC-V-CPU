@@ -24,8 +24,16 @@ You can also use --workload to run workload files in workloads/ directory. For e
 python main.py --workload 0to100 --max-cycles 10000
 ```
 You could see log in the .workaspace/ directory.
+You can simply run all workload tests by(300000 cycles default):
+```python 
+python main.py
+```
+or 
+```python
+python main.py --all-workloads --max-cycles 300000
+```
 
 ## TODO
 - Handle the issue of index length mismatch
-- Implement Branch Prediction. Now the cpu runs with an "always false" prediction strategy. It is not efficient when running loops. For example, in the plus workload, the cpu runs 40844 cycles to finish the program with approximately 700 flushes. With a better branch prediction strategy, the performance could be improved significantly.
+- Implement more advanced Branch Prediction.
 - Implement more tests

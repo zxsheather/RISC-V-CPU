@@ -192,12 +192,14 @@ class ReservationStation(Module):
                 log(
                     "EBREAK instruction committed, finish simulation",
                 )
+                log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
             with Condition(is_ecall_array[update_index]):
                 log(
                     "ECALL instruction committed, finish simulation",
                 )
+                log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
             is_li_x10_255 = (
