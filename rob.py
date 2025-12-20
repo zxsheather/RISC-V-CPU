@@ -45,7 +45,9 @@ class ROB(Module):
         revert_flag_cdb: Array,
         bypass_valid_to_if: Array,
         updated_pc_to_if: Array,
-        is_jump_to_if: Array,
+        commit_branch_to_bpu: Array,
+        actual_taken_to_bpu: Array,
+        pc_addr_to_bpu: Array,
         alu_valid_from_alu: Array,
         alu_value_from_alu: Array,
         rob_index_from_alu: Array,
@@ -132,6 +134,8 @@ class ROB(Module):
             need_update_to_rs[0] = commit_flag & ~(
                 is_branch_from_rs_array[pos[0]] | memory_from_rs_array[pos[0]][1:1]
             )
+            commit_branch_to_bpu[0] = commit_flag & is_branch_from_rs_array[pos[0]]
+            pc_addr_to_bpu[0] = pc_array[pos[0]]
             with Condition(commit_flag):
                 log(
                     "Committing entry rob_idx={}, dest={}, value=0x{:08x}, rs_idx={}, pc=0x{:08x}",
@@ -167,7 +171,6 @@ class ROB(Module):
                     updated_pc_to_if[0] = (
                         rs1_val_array[head] + imm_array[head]
                     ) & Bits(32)(0xFFFFFFFE)
-                    is_jump_to_if[0] = Bits(1)(1)
 
                 with Condition(is_auipc_from_rs_array[head]):
                     log(
@@ -217,12 +220,12 @@ class ROB(Module):
                     # Branch taken
                     with Condition(read_mux(value_array_d, head)[0:0]):
                         updated_pc_to_if[0] = pc_array[head] + imm_array[head]
-                        is_jump_to_if[0] = Bits(1)(1)
+                        actual_taken_to_bpu[0] = Bits(1)(1)
 
                     # Branch not taken
                     with Condition(~read_mux(value_array_d, head)[0:0]):
                         updated_pc_to_if[0] = pc_array[head] + Bits(32)(4)
-                        is_jump_to_if[0] = Bits(1)(0)
+                        actual_taken_to_bpu[0] = Bits(1)(0)
 
                     with Condition(~predict_result):
                         log(
@@ -241,12 +244,6 @@ class ROB(Module):
                             jump_array[head][0:0],
                             read_mux(value_array_d, head)[0:0],
                         )
-
-                with Condition(is_jalr_from_rs_array[head]):
-                    updated_pc_to_if[0] = (
-                        rs1_val_array[head] + imm_array[head]
-                    ) & Bits(32)(0xFFFFFFFE)
-                    is_jump_to_if[0] = Bits(1)(1)
 
                 out_valid_to_rs[0] = Bits(1)(1)
 

@@ -52,29 +52,21 @@ class Decoder(Module):
         valid = inst_valid_from_fi & (~revert_flag_cdb[0])
         is_jal = valid.select(is_jal, Bits(1)(0))
         is_branch = valid.select(is_branch, Bits(1)(0))
-        
-        updated_pc = (is_jal | is_branch).select(
-            (fetch_pc_from_fi.bitcast(Int(32)) + signals.imm.bitcast(Int(32))).bitcast(Bits(32)),
-            (fetch_pc_from_fi.bitcast(UInt(32)) + Bits(32)(4)).bitcast(Bits(32)),
-        )
-
-        jump = (updated_pc < fetch_pc_from_fi).select(Bits(1)(1), Bits(1)(0))
-        jump = is_branch.select(jump, Bits(1)(0))
+        target_pc = (fetch_pc_from_fi.bitcast(Int(32)) + signals.imm.bitcast(Int(32))).bitcast(Bits(32))
 
         with Condition(is_jal):
             log(
                 "Decoder detected JAL, updated_pc=0x{:08x}",
-                updated_pc,
+                target_pc,
             )
 
         with Condition(is_branch):
             log(
-                "Decoder detected BRANCH, updated_pc=0x{:08x}, jump={}",
-                updated_pc,
-                jump,
+                "Decoder detected BRANCH, sending to BPU, pc=0x{:08x}, target_pc=0x{:08x}",
+                fetch_pc_from_fi,
+                target_pc,
             )
 
-        nop = inst == Bits(32)(0x00000013)  # ADDI x0, x0, 0
         with Condition(inst==Bits(32)(0x00000000)):
             log(
                 "Decoder detected NOP instruction"
@@ -84,10 +76,9 @@ class Decoder(Module):
             decode_signals=signals,
             has_entry_from_d=inst_valid_from_fi & (~revert_flag_cdb[0]),
             pc_from_d=fetch_pc_from_fi,
-            jump_from_d=jump,
         )
 
-        return is_jal, is_branch, updated_pc, nop, jump
+        return is_jal, is_branch, fetch_pc_from_fi, target_pc
 
 
 @rewrite_assign

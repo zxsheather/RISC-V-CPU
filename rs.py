@@ -14,7 +14,6 @@ class ReservationStation(Module):
                 "decode_signals": Port(DecodeSignals),
                 "has_entry_from_d": Port(Bits(1)),
                 "pc_from_d": Port(Bits(32)),
-                "jump_from_d": Port(Bits(1)),
             }
         )
         self.name = "RS"
@@ -26,6 +25,7 @@ class ReservationStation(Module):
         need_update_from_rob: Array,
         in_index_from_rob: Array,
         value_from_rob: Array,
+        jump_from_bpu: Array,
         in_valid_from_lsq: Array,
         sq_pos_from_lsq: Array,
         rob: Module,
@@ -36,8 +36,7 @@ class ReservationStation(Module):
         (
             signals,
             has_entry_from_d,
-            pc_from_d,
-            jump_from_d,
+            pc_from_d,      
         ) = self.pop_all_ports(False)
 
         rd_from_d = signals.rd
@@ -54,6 +53,7 @@ class ReservationStation(Module):
         imm_valid_from_d = signals.imm_valid
         rd_from_d = signals.rd
         rd_valid_from_d = signals.rd_valid
+        jump = jump_from_bpu[0]
 
         with Condition(has_entry_from_d):
             log(
@@ -68,7 +68,7 @@ class ReservationStation(Module):
                 rs2_from_d,
                 imm_valid_from_d.bitcast(UInt(1)),
                 pc_from_d.bitcast(UInt(5)),
-                jump_from_d.bitcast(UInt(1)),
+                jump.bitcast(UInt(1)),
             )
         newly_freed_flag = Bits(1)(0)
         newly_freed_rd = Bits(5)(0)
@@ -300,7 +300,7 @@ class ReservationStation(Module):
             mem_oper_signed_array[newly_append_ind] = mem_oper_signed_from_d
             imm_array[newly_append_ind] = imm_from_d
             imm_valid_array[newly_append_ind] = imm_valid_from_d
-            jump_array[newly_append_ind] = jump_from_d
+            jump_array[newly_append_ind] = jump
 
             is_jal_array[newly_append_ind] = signals.is_jal
             is_jalr_array[newly_append_ind] = signals.is_jalr

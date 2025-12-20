@@ -5,6 +5,7 @@ import os
 import sys
 import struct
 import subprocess
+from bpu import *
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 workspace = f"{current_path}/.workspace/"
@@ -211,6 +212,12 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             update_sq_pos_to_rs=lsq_bypass_sq_pos_to_rs,
         )
 
+        bpu_predicted_pc = RegArray(Bits(32), 1)
+        bpu_predict_taken = RegArray(Bits(1), 1)
+        rob_commit_branch_to_bpu = RegArray(Bits(1), 1)
+        rob_actual_taken_to_bpu = RegArray(Bits(1), 1)
+        rob_pc_addr_to_bpu = RegArray(Bits(32), 1)
+
         rob = ROB()
         rob.build(
             alu=alu,
@@ -220,7 +227,9 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             revert_flag_cdb=revert_flag_cdb,
             bypass_valid_to_if=rob_bypass_valid_to_if,
             updated_pc_to_if=rob_bypass_pc_to_if,
-            is_jump_to_if=rob_bypass_is_jump_to_if,
+            commit_branch_to_bpu=rob_commit_branch_to_bpu,
+            actual_taken_to_bpu=rob_actual_taken_to_bpu,
+            pc_addr_to_bpu=rob_pc_addr_to_bpu,
             alu_valid_from_alu=alu_valid_to_rob,
             alu_value_from_alu=alu_value_to_rob,
             rob_index_from_alu=alu_index_to_rob,
@@ -238,6 +247,7 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             need_update_from_rob=rob_bypass_need_update_to_rs,
             in_index_from_rob=rob_bypass_index_to_rs,
             value_from_rob=rob_bypass_value_to_rs,
+            jump_from_bpu=bpu_predict_taken,
             in_valid_from_lsq=lsq_bypass_valid_to_rs,
             sq_pos_from_lsq=lsq_bypass_sq_pos_to_rs,
             ifetch_continue_flag=ifetch_continue_flag,
@@ -247,7 +257,19 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
         )
 
         decoder = Decoder()
-        is_jal, is_branch, updated_pc, is_nop, jump = decoder.build(icache.dout, rs, revert_flag_cdb)
+        is_jal, is_branch, fetch_pc_from_d, target_pc = decoder.build(icache.dout, rs, revert_flag_cdb)
+
+        bpu = TwoBitBPU()
+        predict_taken, predicted_pc = bpu.build(
+            pc_addr_from_d=fetch_pc_from_d,
+            target_pc_from_d=target_pc,
+            is_branch_from_d=is_branch,
+            predicted_pc=bpu_predicted_pc,
+            predict_taken=bpu_predict_taken,
+            commit_branch_from_rob=rob_commit_branch_to_bpu,
+            actual_taken_from_rob=rob_actual_taken_to_bpu,
+            pc_addr_from_rob=rob_pc_addr_to_bpu,
+        )
 
         fetch_impl = FetcherImpl()
         fetch_impl.build(
@@ -255,9 +277,9 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             pc_reg_from_f=pc_reg,
             is_jal_from_d=is_jal,
             is_branch_from_d=is_branch,
-            is_nop_from_d=is_nop,
-            jump_from_d=jump,
-            updated_pc_from_d=updated_pc,
+            target_pc_from_d=target_pc,
+            predict_taken_from_bpu=predict_taken,
+            predicted_pc_from_bpu=predicted_pc,
             icache=icache,
             depth_log=depth_log,
             decoder=decoder,
