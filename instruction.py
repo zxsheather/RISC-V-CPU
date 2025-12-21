@@ -369,7 +369,7 @@ supported_opcodes = [
     ('sltiu',   (0b0010011, 0b011, RV32I_ALU.ALU_CMP_LTU, None, None, None), IInst),
     ('slli' ,   (0b0010011, 0b001, RV32I_ALU.ALU_SLL, None, None, 0b000000), IInst),
     ('srli' ,   (0b0010011, 0b101, RV32I_ALU.ALU_SRL, None, None, 0b000000), IInst),
-    ('srai' ,   (0b0010011, 0b101, RV32I_ALU.ALU_SRA, None, None, 0b0100000), IInst),
+    ('srai' ,   (0b0010011, 0b101, RV32I_ALU.ALU_SRA, None, None, 0b010000), IInst),
     
     # R type (opcode, funct3, funct7, alu)
     ('add'  ,   (0b0110011, 0b000, 0b0000000, RV32I_ALU.ALU_ADD), RInst),
