@@ -118,7 +118,9 @@ def discover_workload_cases() -> list[WorkloadCase]:
             ans_path = None
 
         cases.append(
-            WorkloadCase(name=entry, txt_path=txt_path, data_path=data_path, ans_path=ans_path)
+            WorkloadCase(
+                name=entry, txt_path=txt_path, data_path=data_path, ans_path=ans_path
+            )
         )
 
     return cases
@@ -158,7 +160,11 @@ def read_expected_from_ans(ans_path: str) -> int:
     return int(content, 0)
 
 
-def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_init_file: str | None = None):
+def build_simulator(
+    max_cycles=50,
+    icache_init_file: str | None = None,
+    dcache_init_file: str | None = None,
+):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
     depth_log = 8  # 2^8 = 256条指令空间
 
@@ -220,7 +226,6 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
 
         rob = ROB()
         rob.build(
-            alu=alu,
             out_valid_to_rs=rob_bypass_valid_to_rs,
             value_to_rs=rob_bypass_value_to_rs,
             index_to_rs=rob_bypass_index_to_rs,
@@ -238,7 +243,7 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             rob_dest_from_lsq=lsb_rob_dest_to_rob,
             commit_sq_pos_to_lsq=rob_commit_sq_pos_to_lsq,
             commit_valid_to_lsq=rob_commit_valid_to_lsq,
-            need_update_to_rs=rob_bypass_need_update_to_rs
+            need_update_to_rs=rob_bypass_need_update_to_rs,
         )
 
         rs = ReservationStation()
@@ -253,11 +258,14 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
             ifetch_continue_flag=ifetch_continue_flag,
             rob=rob,
             lsq=lsq,
+            alu=alu,
             revert_flag_cdb=revert_flag_cdb,
         )
 
         decoder = Decoder()
-        is_jal, is_branch, fetch_pc_from_d, target_pc = decoder.build(icache.dout, rs, revert_flag_cdb)
+        is_jal, is_branch, fetch_pc_from_d, target_pc = decoder.build(
+            icache.dout, rs, revert_flag_cdb
+        )
 
         bpu = TwoBitBPU()
         predict_taken, predicted_pc = bpu.build(
@@ -318,13 +326,21 @@ def build_simulator(max_cycles=50, icache_init_file: str | None = None, dcache_i
     return simulator_binary, verilog_path
 
 
-def run_simulator(simulator_binary: str, *, timeout_s: int = 30, log_file_path: str | None = None, verilog_path: str | None = None) -> bool:
+def run_simulator(
+    simulator_binary: str,
+    *,
+    timeout_s: int = 30,
+    log_file_path: str | None = None,
+    verilog_path: str | None = None,
+) -> bool:
     """运行已编译好的仿真器，并把 stdout/stderr 写入 .workspace/simulation.log。"""
     if log_file_path is None:
         log_file_path = f"{workspace}/simulation.log"
 
     print("\n正在运行仿真...")
-    result = subprocess.run([simulator_binary], capture_output=True, text=True, timeout=timeout_s)
+    result = subprocess.run(
+        [simulator_binary], capture_output=True, text=True, timeout=timeout_s
+    )
 
     with open(log_file_path, "w") as f:
         if result.stdout:
@@ -360,7 +376,9 @@ def build_and_run(max_cycles=50, dcache_init_file=None):
     """兼容旧接口：构建并运行一次仿真"""
     icache_init_file = f"{workspace}/workload.exe"
     simulator_binary, verilog_path = build_simulator(
-        max_cycles=max_cycles, icache_init_file=icache_init_file, dcache_init_file=dcache_init_file
+        max_cycles=max_cycles,
+        icache_init_file=icache_init_file,
+        dcache_init_file=dcache_init_file,
     )
     success = run_simulator(simulator_binary, verilog_path=verilog_path)
 
@@ -387,7 +405,9 @@ def run_all_workloads(max_cycles: int, *, timeout_s: int = 30) -> int:
 
     print("\n[步骤 0] 编译仿真器（一次）")
     simulator_binary, verilog_path = build_simulator(
-        max_cycles=max_cycles, icache_init_file=icache_init_file, dcache_init_file=dcache_init_file
+        max_cycles=max_cycles,
+        icache_init_file=icache_init_file,
+        dcache_init_file=dcache_init_file,
     )
 
     passed = 0
@@ -407,8 +427,13 @@ def run_all_workloads(max_cycles: int, *, timeout_s: int = 30) -> int:
             _copy_text_file("/dev/null", dcache_init_file)
 
         # 2) 运行仿真
-        ok = run_simulator(simulator_binary, timeout_s=timeout_s, log_file_path=f"{workspace}/simulation.log", verilog_path=verilog_path)
-        
+        ok = run_simulator(
+            simulator_binary,
+            timeout_s=timeout_s,
+            log_file_path=f"{workspace}/simulation.log",
+            verilog_path=verilog_path,
+        )
+
         if not ok:
             failed += 1
             failures.append(f"{case.name}: 仿真返回非 0")
@@ -451,36 +476,42 @@ def load_workload_file(filename):
     3. workload/xxx - 自动从子文件夹加载 xxx/xxx.txt 和 xxx/xxx.data
     """
     data_file = None
-    
+
     # 检查是否包含文件夹路径或扩展名
     if "/" in filename:
         # 格式: folder/file.txt
         workload_path = os.path.join(current_path, "workload", filename)
         folder_name = filename.split("/")[0]
-        data_file = os.path.join(current_path, "workload", folder_name, f"{folder_name}.data")
+        data_file = os.path.join(
+            current_path, "workload", folder_name, f"{folder_name}.data"
+        )
     elif not filename.endswith(".txt"):
         # 格式: folder (不含扩展名) - 自动查找 folder/folder.txt
         folder_name = filename
-        workload_path = os.path.join(current_path, "workload", folder_name, f"{folder_name}.txt")
-        data_file = os.path.join(current_path, "workload", folder_name, f"{folder_name}.data")
+        workload_path = os.path.join(
+            current_path, "workload", folder_name, f"{folder_name}.txt"
+        )
+        data_file = os.path.join(
+            current_path, "workload", folder_name, f"{folder_name}.data"
+        )
     else:
         # 格式: file.txt
         workload_path = os.path.join(current_path, "workload", filename)
         data_file = None
-    
+
     if not os.path.exists(workload_path):
         print(f"✗ 错误: 找不到文件 {workload_path}")
         sys.exit(1)
-    
+
     instructions = []
     with open(workload_path, "r") as f:
         for line in f:
             line = line.strip()
-            
+
             # 移除 // 后的注释
             if "//" in line:
                 line = line.split("//")[0].strip()
-            
+
             # 跳过空行和注释
             if not line or line.startswith("#") or line.startswith("@"):
                 continue
@@ -491,9 +522,9 @@ def load_workload_file(filename):
             except ValueError:
                 print(f"✗ 警告: 无法解析指令: {line}")
                 continue
-    
+
     print(f"✓ 从 {filename} 加载了 {len(instructions)} 条指令")
-    
+
     # 检查是否存在数据文件
     if data_file and os.path.exists(data_file):
         print(f"✓ 找到数据文件: {data_file}")
@@ -560,7 +591,7 @@ def main():
 
     instructions = None
     dcache_init_file = None
-    
+
     # 优先使用 --workload 选项
     if args.workload:
         instructions, dcache_init_file = load_workload_file(args.workload)
@@ -586,7 +617,7 @@ def main():
         instructions = jal_jalr_combined_test()
     elif args.test == "sum_0_to_100":
         instructions = sum_0_to_100_test()
-    
+
     # 1. 创建测试程序
     print("\n[步骤 1] 创建测试程序")
     create_test_program(instructions)
@@ -595,7 +626,9 @@ def main():
     print(f"\n[步骤 2] 构建并运行仿真 (最大周期数: {args.max_cycles})")
     if dcache_init_file:
         print(f"    使用 dcache 初始化文件: {dcache_init_file}")
-    success, verilog_path = build_and_run(max_cycles=args.max_cycles, dcache_init_file=dcache_init_file)
+    success, verilog_path = build_and_run(
+        max_cycles=args.max_cycles, dcache_init_file=dcache_init_file
+    )
 
     if success:
         print("\n✓ 仿真成功完成")

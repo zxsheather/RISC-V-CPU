@@ -2,6 +2,7 @@ from assassyn.frontend import *
 from instruction import *
 from utils import *
 from lsq import LSQ_SIZE
+from rob import ROB_SIZE
 
 RS_SIZE = 32
 RS_SIZE_LOG = 5
@@ -31,13 +32,14 @@ class ReservationStation(Module):
         sq_pos_from_lsq: Array,
         rob: Module,
         lsq: Module,
+        alu: Module,
         ifetch_continue_flag: Array,
         revert_flag_cdb: Array,
     ):
         (
             signals,
             has_entry_from_d,
-            pc_from_d,      
+            pc_from_d,
         ) = self.pop_all_ports(False)
 
         rd_from_d = signals.rd
@@ -107,7 +109,6 @@ class ReservationStation(Module):
         imm_valid_array = RegArray(Bits(1), RS_SIZE)
         rob_dest_array = RegArray(Bits(32), RS_SIZE)
         pc_array = RegArray(Bits(32), RS_SIZE)
-        ready_array = RegArray(Bits(1), RS_SIZE)
         jump_array = RegArray(Bits(1), RS_SIZE)
         is_jal_array = RegArray(Bits(1), RS_SIZE)
         is_jalr_array = RegArray(Bits(1), RS_SIZE)
@@ -285,13 +286,13 @@ class ReservationStation(Module):
         # Append new entry
         with Condition(has_entry_from_d & ~revert_flag):
             newly_append_ind = newly_append_index[0].bitcast(Bits(RS_SIZE_LOG))
-            newly_append_index[0] = (newly_append_index[0].bitcast(Int(32)) + Int(32)(1)) & Int(32)(
-                RS_SIZE - 1
-            )
+            newly_append_index[0] = (
+                newly_append_index[0].bitcast(Int(32)) + Int(32)(1)
+            ) & Int(32)(RS_SIZE - 1)
             log("New RS entry allocated at index {}", newly_append_ind)
             pos_in_rob[0] = (pos_in_rob[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
                 Bits(32)
-            )
+            ) & Bits(32)(ROB_SIZE - 1)
             write_1hot(busy_array_d, newly_append_ind, Bits(1)(1))
             pc_array[newly_append_ind] = pc_from_d
             alu_array[newly_append_ind] = alu_from_d
@@ -521,7 +522,9 @@ class ReservationStation(Module):
                 & (qk_array_d[i][0] == Q_DEFAULT)
             )
             is_selected = entry_ready & ~has_selected
-            current_index_value = is_selected.select(Bits(RS_SIZE_LOG)(i), Bits(RS_SIZE_LOG)(0))
+            current_index_value = is_selected.select(
+                Bits(RS_SIZE_LOG)(i), Bits(RS_SIZE_LOG)(0)
+            )
             dispatch_index = dispatch_index | current_index_value
 
             has_selected = has_selected | entry_ready
@@ -575,4 +578,34 @@ class ReservationStation(Module):
             lq_pos_from_rs=lq_poses_array[dispatch_index],
             sq_pos_from_rs=sq_poses_array[dispatch_index],
             rob_dest_from_rs=rob_dest_array[dispatch_index],
+        )
+
+        # Send to ALU
+        alu_out_flag = (
+            has_selected
+            & (memory_array[dispatch_index] == Bits(2)(0))
+            & alu_valid_array[dispatch_index]
+        )
+
+        alu_a = vj_valid_array[dispatch_index].select(
+            read_mux(vj_array_d, dispatch_index), pc_array[dispatch_index]
+        )
+
+        alu_b = vk_valid_array[dispatch_index].select(
+            read_mux(vk_array_d, dispatch_index), imm_array[dispatch_index]
+        )
+
+        op = is_branch_array[dispatch_index].select(
+            cond_array[dispatch_index], alu_array[dispatch_index]
+        )
+
+        with Condition(alu_out_flag):
+            log("Dispatching RS entry {} to ALU", dispatch_index)
+
+        alu.async_called(
+            alu_valid_from_rs=alu_out_flag,
+            op_from_rs=op,
+            alu_a_from_rs=alu_a,
+            alu_b_from_rs=alu_b,
+            rob_idx_from_rs=rob_dest_array[dispatch_index],
         )

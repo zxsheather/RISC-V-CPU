@@ -38,7 +38,6 @@ class ROB(Module):
     @module.combinational
     def build(
         self,
-        alu: Module,
         out_valid_to_rs: Array,
         need_update_to_rs: Array,
         value_to_rs: Array,
@@ -376,27 +375,4 @@ class ROB(Module):
                     ready_flag,
                     cond_from_rs,
                     flip_from_rs,
-                )
-
-            # If the instruction is ALU type, send to ALU for execution
-            alu_a = rs1_valid_from_rs.select(rs1_val_from_rs, pc_from_rs)
-            alu_b = rs2_valid_from_rs.select(rs2_val_from_rs, imm_from_rs)
-
-            op = is_branch_from_rs.select(cond_from_rs, alu_from_rs)
-            alu.async_called(
-                op_from_rob=op,
-                alu_valid_from_rob=alu_flag,
-                alu_a_from_rob=alu_a,
-                alu_b_from_rob=alu_b,
-                rob_idx_from_rob=idx.bitcast(Bits(32)),
-            )
-            with Condition(alu_flag):
-                log(
-                    "Sent to ALU idx={} alu_a={} alu_b={}, op={}, alu_valid={}, is_branch={}",
-                    idx,
-                    alu_a,
-                    alu_b,
-                    op,
-                    alu_valid_from_rs,
-                    is_branch_from_rs,
                 )
