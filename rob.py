@@ -152,6 +152,9 @@ class ROB(Module):
                         ROB_SIZE - 1
                     )
                 write_1hot(ready_array_d, head, Bits(1)(0))
+                # Collect committed value once to avoid multi-write on value_to_rs
+                value_out = Bits(32)(0)
+
                 with Condition(
                     is_jal_from_rs_array[head] | is_jalr_from_rs_array[head]
                 ):
@@ -159,7 +162,7 @@ class ROB(Module):
                         "is_jal/jalr, value_to_rs[0] = 0x{:08x}",
                         pc_array[head].bitcast(Int(32)) + Int(32)(4),
                     )
-                    value_to_rs[0] = (
+                    value_out = (
                         pc_array[head].bitcast(Int(32)) + Int(32)(4)
                     ).bitcast(Bits(32))
 
@@ -189,31 +192,31 @@ class ROB(Module):
                             + imm_array[head].bitcast(Int(32))
                         ).bitcast(Bits(32)),
                     )
-                    value_to_rs[0] = (
+                    value_out = (
                         pc_array[head].bitcast(Int(32))
                         + imm_array[head].bitcast(Int(32))
                     ).bitcast(Bits(32))
 
                 with Condition(is_lui_from_rs_array[head]):
                     log("is_lui, value_to_rs[0] = 0x{:08x}", imm_array[head])
-                    value_to_rs[0] = imm_array[head]
+                    value_out = imm_array[head]
 
                 with Condition(alu_valid_array[head]):
                     log(
                         "alu_type, value_to_rs[0] = 0x{:08x}",
                         read_mux(value_array_d, head),
                     )
-                    value_to_rs[0] = read_mux(value_array_d, head)
+                    value_out = read_mux(value_array_d, head)
 
                 with Condition(memory_from_rs_array[head][0:0] == Bits(1)(1)):
                     log(
                         "load_type, value_to_rs[0] = 0x{:08x}",
                         read_mux(value_array_d, head),
                     )
-                    value_to_rs[0] = read_mux(value_array_d, head)
+                    value_out = read_mux(value_array_d, head)
 
                 with Condition(memory_from_rs_array[head][1:1] == Bits(1)(1)):
-                    value_to_rs[0] = Bits(32)(0)
+                    value_out = Bits(32)(0)
                     commit_sq_pos_to_lsq[0] = sq_pos_from_rs_array[head]
                     commit_valid_to_lsq[0] = Bits(1)(1)
                     log(
@@ -264,6 +267,9 @@ class ROB(Module):
                             jump_array[head][0:0],
                             read_mux(value_array_d, head)[0:0],
                         )
+
+                # Single write to value_to_rs avoids multi-write panic in runtime
+                value_to_rs[0] = value_out
 
                 out_valid_to_rs[0] = Bits(1)(1)
 
