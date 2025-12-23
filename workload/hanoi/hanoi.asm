@@ -1,5 +1,5 @@
 
-./hanoi.elf:     file format elf32-littleriscv
+hanoi.elf:     file format elf32-littleriscv
 
 
 Disassembly of section .text:
@@ -132,15 +132,15 @@ Disassembly of section .text:
  1c8:	02112623          	sw	ra,44(sp)
  1cc:	02812423          	sw	s0,40(sp)
  1d0:	03010413          	add	s0,sp,48
- 1d4:	04100793          	li	a5,65
- 1d8:	fef42023          	sw	a5,-32(s0)
- 1dc:	fe040223          	sb	zero,-28(s0)
- 1e0:	04200793          	li	a5,66
- 1e4:	fcf42c23          	sw	a5,-40(s0)
- 1e8:	fc040e23          	sb	zero,-36(s0)
- 1ec:	04300793          	li	a5,67
- 1f0:	fcf42823          	sw	a5,-48(s0)
- 1f4:	fc040a23          	sb	zero,-44(s0)
+ 1d4:	fe040793          	add	a5,s0,-32
+ 1d8:	04100713          	li	a4,65
+ 1dc:	00e7a023          	sw	a4,0(a5)
+ 1e0:	fd840793          	add	a5,s0,-40
+ 1e4:	04200713          	li	a4,66
+ 1e8:	00e7a023          	sw	a4,0(a5)
+ 1ec:	fd040793          	add	a5,s0,-48
+ 1f0:	04300713          	li	a4,67
+ 1f4:	00e7a023          	sw	a4,0(a5)
  1f8:	00a00793          	li	a5,10
  1fc:	fef42623          	sw	a5,-20(s0)
  200:	fd040693          	add	a3,s0,-48
