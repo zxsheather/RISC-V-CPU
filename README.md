@@ -15,6 +15,11 @@ You can also use --workload to run workload files in workloads/ directory. For e
 ```
 python main.py --workload 0to100 --max-cycles 10000
 ```
+You can choose the branch predictor via `--predictor` ( Currently supports: `tournament`, `global`, `two_bit`, `always_false`,
+  `always_true`):
+```
+python main.py --test br1 --predictor global
+```
 You could see log in the .workaspace/ directory.
 You can simply run all workload tests by(300000 cycles default):
 ```python 
@@ -26,4 +31,4 @@ python main.py --all-workloads --max-cycles 300000
 ```
 
 ## TODO
-- Implement more advanced Branch Prediction.
+- Test branch prediction benchmark
