@@ -36,6 +36,21 @@ class Driver(Module):
 DCACHE_DEPTH_LOG = 16
 
 
+def make_bpu(kind: str):
+    name = kind.replace("-", "_").lower()
+    if name in ("tournament"):
+        return TournamentBPU()
+    if name in ("global"):
+        return GlobalHistoryBPU()
+    if name in ("two_bit"):
+        return TwoBitBPU()
+    if name in ("always_false"):
+        return AlwaysFalseBPU()
+    if name in ("always_true"):
+        return AlwaysTakenBPU()
+    raise ValueError(f"Unsupported BPU kind: {kind}")
+
+
 def create_test_program(instructions=None):
     """创建测试程序 - 包含多种类型的指令"""
     if instructions is None:
@@ -162,6 +177,7 @@ def build_simulator(
     max_cycles=50,
     icache_init_file: str | None = None,
     dcache_init_file: str | None = None,
+    bpu_kind: str = "global"
 ):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
     depth_log = 10  # 2^10 = 1024条指令空间（默认）；如需更大程序可考虑改为 10（1024）
@@ -267,7 +283,7 @@ def build_simulator(
             icache.dout, rs, revert_flag_cdb
         )
 
-        bpu = GlobalHistoryBPU()
+        bpu = make_bpu(bpu_kind)
         predict_taken, predicted_pc = bpu.build(
             pc_addr_from_d=fetch_pc_from_d,
             target_pc_from_d=target_pc,
@@ -372,20 +388,21 @@ def run_simulator(
     return result.returncode == 0
 
 
-def build_and_run(max_cycles=50, dcache_init_file=None):
+def build_and_run(max_cycles=50, dcache_init_file=None, bpu_kind="global"):
     """兼容旧接口：构建并运行一次仿真"""
     icache_init_file = f"{workspace}/workload.exe"
     simulator_binary, verilog_path = build_simulator(
         max_cycles=max_cycles,
         icache_init_file=icache_init_file,
         dcache_init_file=dcache_init_file,
+        bpu_kind=bpu_kind,
     )
     success = run_simulator(simulator_binary, verilog_path=verilog_path)
 
     return success, verilog_path
 
 
-def run_all_workloads(max_cycles: int, *, timeout_s: int = 30) -> int:
+def run_all_workloads(max_cycles: int, *, timeout_s: int = 30, bpu_kind="global") -> int:
     """编译一次仿真器，然后运行 workload/ 下所有子目录用例并校验 .ans。"""
     cases = discover_workload_cases()
     if not cases:
@@ -408,6 +425,7 @@ def run_all_workloads(max_cycles: int, *, timeout_s: int = 30) -> int:
         max_cycles=max_cycles,
         icache_init_file=icache_init_file,
         dcache_init_file=dcache_init_file,
+        bpu_kind=bpu_kind,
     )
 
     passed = 0
@@ -570,6 +588,13 @@ def main():
         default=50,
         help="Maximum number of simulation cycles to run (default: 50)",
     )
+    parser.add_argument(
+        "--predictor",
+        choices=["tournament", "global", "two_bit",
+                 "always_false", "always_true"],
+        default="global",
+        help="Choose branch predictor"
+    )
     args = parser.parse_args()
 
     # 约定：直接 `python main.py`（无任何参数）时，跑全量 workload 回归。
@@ -584,9 +609,9 @@ def main():
 
     print("=" * 70)
     if args.workload:
-        print(f"工作负载: {args.workload}")
+        print(f"工作负载: {args.workload} 分支预测: {args.predictor}")
     else:
-        print(f"测试: {args.test}")
+        print(f"测试: {args.test} 分支预测: {args.predictor}")
     print("=" * 70)
 
     instructions = None
