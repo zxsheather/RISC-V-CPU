@@ -84,7 +84,8 @@ class ReservationStation(Module):
         reg_file = RegArray(Bits(32), 32)
 
         # busy_array = RegArray(Bits(1), RS_SIZE, initializer=[0] * RS_SIZE)
-        busy_array_d = [RegArray(Bits(1), 1, initializer=[0]) for _ in range(RS_SIZE)]
+        busy_array_d = [RegArray(Bits(1), 1, initializer=[0])
+                        for _ in range(RS_SIZE)]
 
         busy_entry_count = RegArray(Bits(32), 1)
         # dispatched_array = RegArray(Bits(1), RS_SIZE)
@@ -131,6 +132,9 @@ class ReservationStation(Module):
         sq_poses_array = RegArray(Bits(32), RS_SIZE)
         sq_pos = RegArray(Bits(32), 1)
 
+        total_br = RegArray(Bits(32), 1)
+        predicted_br = RegArray(Bits(32), 1)
+
         # Update sq_pos from LSQ after revert
         with Condition(in_valid_from_lsq[0]):
             self.log(
@@ -153,7 +157,8 @@ class ReservationStation(Module):
             is_match = reorder_busy_array_d[i][0] & (
                 reorder_array_d[i][0] == update_index
             )
-            match_mask = match_mask | is_match.select(Bits(32)(1 << i), Bits(32)(0))
+            match_mask = match_mask | is_match.select(
+                Bits(32)(1 << i), Bits(32)(0))
 
         # 2. Calculate flag
         newly_freed_flag = match_mask != Bits(32)(0)
@@ -165,11 +170,14 @@ class ReservationStation(Module):
         raw_rd = safe_mask.select1hot(*possible_rds)
 
         newly_freed_rd = newly_freed_flag.select(raw_rd, Bits(5)(0))
-        newly_freed_rd = in_valid_from_rob[0].select(newly_freed_rd, Bits(5)(0))
-        newly_freed_flag = in_valid_from_rob[0].select(newly_freed_flag, Bits(1)(0))
+        newly_freed_rd = in_valid_from_rob[0].select(
+            newly_freed_rd, Bits(5)(0))
+        newly_freed_flag = in_valid_from_rob[0].select(
+            newly_freed_flag, Bits(1)(0))
         revert_flag = revert_flag_cdb[0]
 
-        self.log("Busy entries in RS: {}", busy_entry_count[0].bitcast(UInt(32)))
+        self.log("Busy entries in RS: {}",
+                 busy_entry_count[0].bitcast(UInt(32)))
 
         busy_entry_count_next = in_valid_from_rob[0].select(
             busy_entry_count[0].bitcast(Int(32)) - Int(32)(1),
@@ -184,7 +192,8 @@ class ReservationStation(Module):
         # Commit from ROB
         with Condition(in_valid_from_rob[0]):
             update_index = in_index_from_rob[0].bitcast(Bits(5))
-            with Condition(~revert_flag):
+            newly_append_ind = newly_append_index[0].bitcast(Bits(RS_SIZE_LOG))
+            with Condition(~revert_flag & (newly_append_ind != update_index.bitcast(Bits(RS_SIZE_LOG)))):
                 write_1hot(busy_array_d, update_index, Bits(1)(0))
             self.log(
                 "Committing from ROB idx={}, value=0x{:08x}",
@@ -206,7 +215,8 @@ class ReservationStation(Module):
                 finish()
 
             is_li_x10_255 = (
-                (alu_array[update_index] == Bits(RV32I_ALU.CNT)(1 << RV32I_ALU.ALU_ADD))
+                (alu_array[update_index] == Bits(
+                    RV32I_ALU.CNT)(1 << RV32I_ALU.ALU_ADD))
                 & (rd_array[update_index] == Bits(5)(10))
                 & (imm_valid_array[update_index] == Bits(1)(1))
                 & (read_mux(vj_array_d, update_index) == Bits(32)(0))
@@ -385,7 +395,8 @@ class ReservationStation(Module):
                     & (~newly_freed_flag | (newly_freed_rd != rs1_from_d))
                     & (rs1_from_d != Bits(5)(0))
                 ):
-                    write_1hot(vj_array_d, newly_append_ind, reg_file[rs1_from_d])
+                    write_1hot(vj_array_d, newly_append_ind,
+                               reg_file[rs1_from_d])
                     write_1hot(qj_array_d, newly_append_ind, Q_DEFAULT)
                     self.log(
                         "RS entry index {} got rs1 x{:02} value 0x{:08x} from RegFile",
@@ -447,7 +458,8 @@ class ReservationStation(Module):
                     & (~newly_freed_flag | (newly_freed_rd != rs2_from_d))
                     & (rs2_from_d != Bits(5)(0))
                 ):
-                    write_1hot(vk_array_d, newly_append_ind, reg_file[rs2_from_d])
+                    write_1hot(vk_array_d, newly_append_ind,
+                               reg_file[rs2_from_d])
                     write_1hot(qk_array_d, newly_append_ind, Q_DEFAULT)
                     self.log(
                         "RS entry index {} got rs2 x{:02} value 0x{:08x} from RegFile",
@@ -476,7 +488,8 @@ class ReservationStation(Module):
             with Condition(rd_valid_from_d):
                 rd_valid_array[newly_append_ind] = Bits(1)(1)
                 write_1hot(
-                    reorder_array_d, rd_from_d, newly_append_ind.bitcast(Bits(32))
+                    reorder_array_d, rd_from_d, newly_append_ind.bitcast(
+                        Bits(32))
                 )
                 write_1hot(reorder_busy_array_d, rd_from_d, Bits(1)(1))
                 self.log(
@@ -495,13 +508,14 @@ class ReservationStation(Module):
                     rd_from_d,
                 )
 
-        reuse_rd_flag = (rd_from_d == newly_freed_rd).select(Bits(1)(1), Bits(1)(0))
+        reuse_rd_flag = (rd_from_d == newly_freed_rd).select(
+            Bits(1)(1), Bits(1)(0))
         reuse_rd_flag = rd_valid_from_d.select(reuse_rd_flag, Bits(1)(0))
         reuse_rd_flag = (has_entry_from_d & ~revert_flag).select(
             reuse_rd_flag, Bits(1)(0)
         )
 
-        with Condition(~reuse_rd_flag & newly_freed_flag):
+        with Condition(~reuse_rd_flag & newly_freed_flag & ~revert_flag):
             write_1hot(reorder_array_d, newly_freed_rd, Bits(32)(0))
             write_1hot(reorder_busy_array_d, newly_freed_rd, Bits(1)(0))
             self.log(
@@ -568,7 +582,8 @@ class ReservationStation(Module):
         )
 
         # Send to LSQ
-        lsq_out_flag = has_selected & (memory_array[dispatch_index] != Bits(2)(0))
+        lsq_out_flag = has_selected & (
+            memory_array[dispatch_index] != Bits(2)(0))
         with Condition(lsq_out_flag):
             self.log("Dispatching RS entry {} to LSQ", dispatch_index)
         lsq.async_called(
