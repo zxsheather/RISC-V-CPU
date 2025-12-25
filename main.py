@@ -48,6 +48,8 @@ def make_bpu(kind: str):
         return AlwaysFalseBPU()
     if name in ("always_true"):
         return AlwaysTakenBPU()
+    if name in ("tage"):
+        return TageBPU()
     raise ValueError(f"Unsupported BPU kind: {kind}")
 
 
@@ -177,7 +179,7 @@ def build_simulator(
     max_cycles=50,
     icache_init_file: str | None = None,
     dcache_init_file: str | None = None,
-    bpu_kind: str = "global"
+    bpu_kind: str = "",
 ):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
     depth_log = 10  # 2^10 = 1024条指令空间（默认）；如需更大程序可考虑改为 10（1024）
@@ -591,7 +593,7 @@ def main():
     parser.add_argument(
         "--predictor",
         choices=["tournament", "global", "two_bit",
-                 "always_false", "always_true"],
+                 "always_false", "always_true", "tage"],
         default="global",
         help="Choose branch predictor"
     )
