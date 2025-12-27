@@ -144,7 +144,8 @@ class ReservationStation(Module):
             )
             sq_pos[0] = sq_pos_from_lsq[0]
 
-        new_val = need_update_from_rob[0].select(value_from_rob[0], Bits(32)(0))
+        new_val = need_update_from_rob[0].select(
+            value_from_rob[0], Bits(32)(0))
         new_val = (rd_array[in_index_from_rob[0]] == Bits(32)(0)).select(
             Bits(32)(0), new_val
         )
@@ -519,7 +520,7 @@ class ReservationStation(Module):
                 in_index_from_rob[0],
             )
 
-        with Condition(~reuse_rd_flag & newly_freed_flag & ~revert_flag):
+        with Condition(~reuse_rd_flag & newly_freed_flag & ~revert_flag & (rd_from_d != newly_freed_rd)):
             write_1hot(reorder_array_d, newly_freed_rd, Bits(32)(0))
             write_1hot(reorder_busy_array_d, newly_freed_rd, Bits(1)(0))
             self.log(
