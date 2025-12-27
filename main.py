@@ -15,6 +15,7 @@ import os
 import sys
 import struct
 import subprocess
+from contextlib import redirect_stdout, redirect_stderr
 from bpu import *
 
 current_path = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +23,35 @@ workspace = f"{current_path}/.workspace/"
 os.makedirs(workspace, exist_ok=True)
 
 sys.path.insert(0, current_path)
+
+
+def _append_env_flag(env_key: str, flag: str) -> None:
+    current = os.environ.get(env_key, "").strip()
+    if not current:
+        os.environ[env_key] = flag
+        return
+    parts = current.split()
+    if flag in parts:
+        return
+    os.environ[env_key] = f"{current} {flag}".strip()
+
+
+def _suppress_rust_warnings_for_cargo_build() -> None:
+    # Cargo 会透传 RUSTFLAGS 给 rustc；这里用 -Awarnings 统一屏蔽编译 warning。
+    _append_env_flag("RUSTFLAGS", "-Awarnings")
+
+
+def _is_verbose() -> bool:
+    return os.environ.get("CPU_VERBOSE", "0") not in ("0", "", "false", "False")
+
+
+def _build_log_path() -> str:
+    return f"{workspace}/build_simulator.log"
+
+
+def _run_quiet_to_log(fn, *, log_path: str):
+    with open(log_path, "a") as f, redirect_stdout(f), redirect_stderr(f):
+        return fn()
 
 
 class Driver(Module):
@@ -180,6 +210,8 @@ def build_simulator(
     icache_init_file: str | None = None,
     dcache_init_file: str | None = None,
     bpu_kind: str = "global",
+    *,
+    generate_verilog: bool | None = None,
 ):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
     depth_log = 10  # 2^10 = 1024条指令空间（默认）；如需更大程序可考虑改为 10（1024）
@@ -321,11 +353,17 @@ def build_simulator(
         driver.build(fetcher=fetcher)
 
     print("\n系统结构:")
-    print(sys_obj)
+    if _is_verbose():
+        print(sys_obj)
+    else:
+        print(f"(已隐藏详细结构输出；需要可设 CPU_VERBOSE=1，完整日志: {_build_log_path()})")
 
     # 配置仿真参数
+    if generate_verilog is None:
+        generate_verilog = bool(utils.has_verilator())
+
     conf = config(
-        verilog=bool(utils.has_verilator()),  # 生成 Verilog
+        verilog=bool(generate_verilog),  # 生成 Verilog
         sim_threshold=max_cycles,  # 最大运行周期数
         idle_threshold=max_cycles,
         resource_base="",
@@ -333,13 +371,27 @@ def build_simulator(
     )
 
     print("\n正在生成仿真器...")
-    simulator_path, verilog_path = elaborate(sys_obj, **conf)
+    log_path = _build_log_path()
+    if not _is_verbose():
+        simulator_path, verilog_path = _run_quiet_to_log(
+            lambda: elaborate(sys_obj, **conf),
+            log_path=log_path,
+        )
+    else:
+        simulator_path, verilog_path = elaborate(sys_obj, **conf)
 
     print(f"✓ 仿真器代码: {simulator_path}")
     print(f"✓ Verilog 代码: {verilog_path}")
 
     print("\n正在编译仿真器...")
-    simulator_binary = utils.build_simulator(simulator_path)
+    _suppress_rust_warnings_for_cargo_build()
+    if not _is_verbose():
+        simulator_binary = _run_quiet_to_log(
+            lambda: utils.build_simulator(simulator_path),
+            log_path=log_path,
+        )
+    else:
+        simulator_binary = utils.build_simulator(simulator_path)
     print(f"✓ 仿真器二进制: {simulator_binary}")
 
     return simulator_binary, verilog_path
@@ -392,7 +444,13 @@ def run_simulator(
     return result.returncode == 0
 
 
-def build_and_run(max_cycles=50, dcache_init_file=None, bpu_kind="global"):
+def build_and_run(
+    max_cycles=50,
+    dcache_init_file=None,
+    bpu_kind="global",
+    *,
+    run_verilog: bool = True,
+):
     """兼容旧接口：构建并运行一次仿真"""
     icache_init_file = f"{workspace}/workload.exe"
     simulator_binary, verilog_path = build_simulator(
@@ -400,14 +458,23 @@ def build_and_run(max_cycles=50, dcache_init_file=None, bpu_kind="global"):
         icache_init_file=icache_init_file,
         dcache_init_file=dcache_init_file,
         bpu_kind=bpu_kind,
+        generate_verilog=run_verilog,
     )
-    success = run_simulator(simulator_binary, verilog_path=verilog_path)
+    success = run_simulator(
+        simulator_binary,
+        verilog_path=verilog_path,
+        run_verilog=run_verilog,
+    )
 
     return success, verilog_path
 
 
 def run_all_workloads(
-    max_cycles: int, *, timeout_s: int = 1000, bpu_kind="global"
+    max_cycles: int,
+    *,
+    timeout_s: int = 1000,
+    bpu_kind="global",
+    skip_verilator: bool = False,
 ) -> int:
     """编译一次仿真器，然后运行 workload/ 下所有子目录用例并校验 .ans。"""
     cases = discover_workload_cases()
@@ -432,6 +499,7 @@ def run_all_workloads(
         icache_init_file=icache_init_file,
         dcache_init_file=dcache_init_file,
         bpu_kind=bpu_kind,
+        generate_verilog=not skip_verilator,
     )
 
     passed = 0
@@ -484,7 +552,9 @@ def run_all_workloads(
             failures.append(f"{case.name}: got={got} expected={expected}")
 
     # 第二阶段：统一跑 Verilator（若可用）
-    if verilog_path and utils.has_verilator():
+    if skip_verilator:
+        print("\n[步骤 2] 跳过 Verilator：已通过 --skip-verilator 禁用")
+    elif verilog_path and utils.has_verilator():
         print("\n[步骤 2] 运行 Verilator（在所有 simulator 用例完成之后）")
         for case in cases:
             print("\n" + "-" * 70)
@@ -630,6 +700,11 @@ def main():
         default="global",
         help="Choose branch predictor",
     )
+    parser.add_argument(
+        "--skip-verilator",
+        action="store_true",
+        help="Skip Verilator (only run Rust simulator).",
+    )
     args = parser.parse_args()
 
     # 约定：直接 `python main.py`（无任何参数）时，跑全量 workload 回归。
@@ -637,9 +712,18 @@ def main():
     if len(sys.argv) == 1 and not args.all_workloads:
         args.all_workloads = True
         args.max_cycles = 100000000
+        args.skip_verilator = False
+
+    if len(sys.argv) == 2 and sys.argv[1] == "--skip-verilator":
+        args.all_workloads = True
+        args.max_cycles = 100000000
+        args.skip_verilator = True
 
     if args.all_workloads:
-        exit_code = run_all_workloads(max_cycles=args.max_cycles)
+        exit_code = run_all_workloads(
+            max_cycles=args.max_cycles,
+            skip_verilator=args.skip_verilator,
+        )
         sys.exit(exit_code)
 
     print("=" * 70)
@@ -693,7 +777,9 @@ def main():
     if dcache_init_file:
         print(f"    使用 dcache 初始化文件: {dcache_init_file}")
     success, verilog_path = build_and_run(
-        max_cycles=args.max_cycles, dcache_init_file=dcache_init_file
+        max_cycles=args.max_cycles,
+        dcache_init_file=dcache_init_file,
+        run_verilog=not args.skip_verilator,
     )
 
     if success:

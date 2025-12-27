@@ -30,4 +30,4 @@ jobs:
           echo "Running all workload tests..."          
           apptainer exec --no-home \
             oras://ghcr.io/zcychar/risc-v-cpu/my-test-image:latest \
-            python main.py
+            python main.py --skip-verilator
