@@ -33,12 +33,9 @@ int cd(int d, char *a, char *b, char *c, int sum) {
 }
 
 int main() {
-  char a[5];
-  char b[5];
-  char c[5];
-  *(unsigned int*)a = 0x41;
-  *(unsigned int*)b = 0x42;
-  *(unsigned int*)c = 0x43;
+  char a[5] = "A";
+  char b[5] = "B";
+  char c[5] = "C";
   int d = 10;
   int sum = cd(d, a, b, c, 0);
   printInt(sum);

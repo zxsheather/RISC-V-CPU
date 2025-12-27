@@ -21,14 +21,15 @@ You can choose the branch predictor via `--predictor` ( Currently supports: `tou
 python main.py --test br1 --predictor global
 ```
 You could see log in the .workaspace/ directory.
-You can simply run all workload tests by(300000 cycles default):
+You can simply run all workload tests by(100000000 cycles default):
 ```python 
 python main.py
 ```
 or 
 ```python
-python main.py --all-workloads --max-cycles 300000
+python main.py --all-workloads --max-cycles 100000000
 ```
 
 ## TODO
 - Test branch prediction benchmark
+- Extend instruction set

@@ -349,6 +349,7 @@ def run_simulator(
     timeout_s: int = 1000,
     log_file_path: str | None = None,
     verilog_path: str | None = None,
+    run_verilog: bool = True,
 ) -> bool:
     """运行已编译好的仿真器，并把 stdout/stderr 写入 .workspace/simulation.log。"""
     if log_file_path is None:
@@ -369,7 +370,7 @@ def run_simulator(
     print(f"✓ 仿真日志已保存至: {log_file_path}")
 
     # Run Verilator simulation (可选)
-    if verilog_path and utils.has_verilator():
+    if run_verilog and verilog_path and utils.has_verilator():
         print("\n正在运行 Verilog 仿真...")
         verilog_log = utils.run_verilator(verilog_path)
         verilog_log_path = f"{workspace}/simulation.verilog.log"
@@ -404,7 +405,7 @@ def build_and_run(max_cycles=50, dcache_init_file=None, bpu_kind="global"):
 
 
 def run_all_workloads(
-    max_cycles: int, *, timeout_s: int = 30, bpu_kind="global"
+    max_cycles: int, *, timeout_s: int = 1000, bpu_kind="global"
 ) -> int:
     """编译一次仿真器，然后运行 workload/ 下所有子目录用例并校验 .ans。"""
     cases = discover_workload_cases()
@@ -435,6 +436,7 @@ def run_all_workloads(
     failed = 0
     failures: list[str] = []
 
+    print("\n[步骤 1] 运行 Python 仿真器并校验（先跑完所有用例）")
     for case in cases:
         print("\n" + "-" * 70)
         print(f"[用例] {case.name}")
@@ -453,6 +455,7 @@ def run_all_workloads(
             timeout_s=timeout_s,
             log_file_path=f"{workspace}/simulation.log",
             verilog_path=verilog_path,
+            run_verilog=False,
         )
 
         if not ok:
@@ -477,6 +480,33 @@ def run_all_workloads(
             print(f"✗ FAIL: got={got} expected={expected}")
             failed += 1
             failures.append(f"{case.name}: got={got} expected={expected}")
+
+    # 第二阶段：统一跑 Verilator（若可用）
+    if verilog_path and utils.has_verilator():
+        print("\n[步骤 2] 运行 Verilator（在所有 simulator 用例完成之后）")
+        for case in cases:
+            print("\n" + "-" * 70)
+            print(f"[Verilator 用例] {case.name}")
+
+            # 重新准备 init 文件，确保 Verilator 读取到对应 workload 的镜像
+            instructions, data_file = load_workload_file(case.name)
+            _write_workload_exe_from_hex_list(instructions, icache_init_file)
+            if data_file and os.path.exists(data_file):
+                _copy_text_file(data_file, dcache_init_file)
+            else:
+                _copy_text_file("/dev/null", dcache_init_file)
+
+            print("正在运行 Verilog 仿真...")
+            verilog_log = utils.run_verilator(verilog_path)
+            verilog_log_path = f"{workspace}/simulation.verilog.{case.name}.log"
+            with open(verilog_log_path, "w") as f:
+                f.write(verilog_log)
+            print(f"✓ Verilog 仿真日志已保存至: {verilog_log_path}")
+    elif utils.has_verilator():
+        # 理论上不会发生，但保留提示，便于排查 elaborate 未产出 verilog_path 的情况
+        print("\n[步骤 2] 跳过 Verilator：未生成 verilog_path")
+    else:
+        print("\n[步骤 2] 跳过 Verilator：系统未检测到 verilator")
 
     print("\n" + "=" * 70)
     print(f"回归结果: PASS {passed}, FAIL {failed}")
@@ -600,10 +630,10 @@ def main():
     args = parser.parse_args()
 
     # 约定：直接 `python main.py`（无任何参数）时，跑全量 workload 回归。
-    # 注意：workload 往往需要更高 max_cycles，因此这里默认用 300000。
+    # 注意：workload 往往需要更高 max_cycles，因此这里默认用 100000000。
     if len(sys.argv) == 1 and not args.all_workloads:
         args.all_workloads = True
-        args.max_cycles = 300000
+        args.max_cycles = 100000000
 
     if args.all_workloads:
         exit_code = run_all_workloads(max_cycles=args.max_cycles)
