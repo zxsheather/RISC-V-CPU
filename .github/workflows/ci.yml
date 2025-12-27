@@ -27,39 +27,7 @@ jobs:
       continue-on-error: true 
       shell: bash
       run: |
-        
-        TEST_CASES="war waw raw ls1 br1 brm1"
-        
-        HAS_ERROR=0
-        
-        LOG_FILE="output.log"
-        export CARGO_TERM_QUIET=true
-        
-        export RUSTFLAGS="-A warnings"
-
-        for TEST_POINT in $TEST_CASES; do
-          echo "========================================"
-          echo "Running Test: $TEST_POINT"
-          echo "========================================"
-          
+          echo "Running all workload tests..."          
           apptainer exec --no-home \
             oras://ghcr.io/zcychar/risc-v-cpu/my-test-image:latest \
-            python main.py --test $TEST_POINT 2>&1 > $LOG_FILE
-
-          if ! true; then
-             echo "::error::Test point [$TEST_POINT] failed!"
-             HAS_ERROR=1
-          else
-             echo "Test point [$TEST_POINT] passed."
-          fi
-          
-          echo ""
-        done
-        
-        if [ $HAS_ERROR -eq 1 ]; then
-          echo "Summary: One or more tests failed."
-          exit 1
-        else
-          echo "Summary: All tests passed successfully."
-          exit 0
-        fi
+            python main.py
