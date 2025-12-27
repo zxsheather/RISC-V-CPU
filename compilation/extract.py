@@ -36,7 +36,10 @@ def extract_sections(elf_file, output_dir):
     subprocess.run([
         'riscv64-unknown-elf-objcopy',
         '-O', 'binary',
+        '--only-section=.rodata',
+        '--only-section=.srodata',
         '--only-section=.data',
+        '--only-section=.sdata',
         elf_file,
         data_bin
     ])
@@ -44,6 +47,10 @@ def extract_sections(elf_file, output_dir):
     # 转换为 txt 格式
     convert_bin_to_txt(text_bin, os.path.join(output_dir, f'{base_name}.txt'))
     convert_bin_to_txt(data_bin, os.path.join(output_dir, f'{base_name}.data'))
+    
+    print(f"\nGenerated files:")
+    print(f"  - {base_name}.txt (code)")
+    print(f"  - {base_name}.data (data)")
 
 def convert_bin_to_txt(bin_file, txt_file):
     """将二进制文件转换为十六进制文本文件"""
