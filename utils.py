@@ -40,6 +40,40 @@ class Logger:
     def set_enabled(self, enabled):
         self.enabled = enabled
 
+
+def priority_select_tree(valids, indices):
+    """Tree-based priority select (lower index wins).
+
+    This builds a balanced tournament tree so the resulting combinational depth
+    is O(log N) rather than a linear chain.
+
+    Args:
+        valids: list of Bits(1) (or 1-bit Values). Each entry indicates whether
+            the corresponding candidate is eligible.
+        indices: list of Bits(k) indices for each candidate (same length).
+
+    Returns:
+        (out_valid, out_index)
+    """
+    if len(valids) != len(indices):
+        raise ValueError("valids and indices must have same length")
+    if len(valids) == 0:
+        raise ValueError("valids must be non-empty")
+
+    def _rec(vs, is_):
+        if len(vs) == 1:
+            return vs[0], is_[0]
+
+        mid = len(vs) // 2
+        left_v, left_i = _rec(vs[:mid], is_[:mid])
+        right_v, right_i = _rec(vs[mid:], is_[mid:])
+
+        out_v = left_v | right_v
+        out_i = left_v.select(left_i, right_i)
+        return out_v, out_i
+
+    return _rec(valids, indices)
+
 FetcherLogEnabled = False
 DecoderLogEnabled = False
 ALULogEnabled = False

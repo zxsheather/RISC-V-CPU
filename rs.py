@@ -532,26 +532,23 @@ class ReservationStation(Module):
         ).select(Bits(1)(1), Bits(1)(0))
 
         # Dispatch logic
-        dispatch_index = Bits(RS_SIZE_LOG)(0)
-        # dispatch_flag = Bits(1)(0)
-        has_selected = Bits(1)(0)
+        ready_flags = []
+        ready_indices = []
         for i in range(RS_SIZE):
-            entry_ready = (
+            ready_flags.append(
                 busy_array_d[i][0]
                 & ~dispatched_array_d[i][0]
                 & (qj_array_d[i][0] == Q_DEFAULT)
                 & (qk_array_d[i][0] == Q_DEFAULT)
             )
-            is_selected = entry_ready & ~has_selected
-            current_index_value = is_selected.select(
-                Bits(RS_SIZE_LOG)(i), Bits(RS_SIZE_LOG)(0)
-            )
-            dispatch_index = dispatch_index | current_index_value
+            ready_indices.append(Bits(RS_SIZE_LOG)(i))
 
-            has_selected = has_selected | entry_ready
+        dispatch_valid, dispatch_index = priority_select_tree(
+            ready_flags, ready_indices
+        )
 
-        has_selected = has_selected & ~revert_flag
-        with Condition(has_selected):
+        dispatch_valid = dispatch_valid & ~revert_flag
+        with Condition(dispatch_valid):
             self.log(
                 "Dispatching RS entry {} to ROB, pc=0x{:08X}",
                 dispatch_index,
@@ -562,7 +559,7 @@ class ReservationStation(Module):
         read_mux(vj_array_d, dispatch_index)
         # Send to ROB
         rob.async_called(
-            has_entry_from_rs=has_selected,
+            has_entry_from_rs=dispatch_valid,
             alu_from_rs=alu_array[dispatch_index],
             alu_valid_from_rs=alu_valid_array[dispatch_index],
             memory_from_rs=memory_array[dispatch_index],
@@ -588,7 +585,7 @@ class ReservationStation(Module):
         )
 
         # Send to LSQ
-        lsq_out_flag = has_selected & (
+        lsq_out_flag = dispatch_valid & (
             memory_array[dispatch_index] != Bits(2)(0))
         with Condition(lsq_out_flag):
             self.log("Dispatching RS entry {} to LSQ", dispatch_index)
@@ -606,7 +603,7 @@ class ReservationStation(Module):
 
         # Send to ALU
         alu_out_flag = (
-            has_selected
+            dispatch_valid
             & (memory_array[dispatch_index] == Bits(2)(0))
             & alu_valid_array[dispatch_index]
             & ~is_jal_array[dispatch_index]
