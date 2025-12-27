@@ -14,6 +14,8 @@ class ROB(Module):
                 "alu_from_rs": Port(Bits(RV32I_ALU.CNT)),
                 "alu_valid_from_rs": Port(Bits(1)),
                 "memory_from_rs": Port(Bits(2)),
+                "mem_oper_signed_from_rs": Port(Bits(1)),
+                "mem_oper_size_from_rs": Port(Bits(2)),
                 "rs1_val_from_rs": Port(Bits(32)),
                 "rs1_valid_from_rs": Port(Bits(1)),
                 "rs2_val_from_rs": Port(Bits(32)),
@@ -54,6 +56,7 @@ class ROB(Module):
         rob_index_from_alu: Array,
         in_valid_from_lsq: Array,
         value_from_dcache: Array,
+        mem_addr_from_lsq: Array,
         rob_dest_from_lsq: Array,
         commit_sq_pos_to_lsq: Array,
         commit_valid_to_lsq: Array,
@@ -66,6 +69,8 @@ class ROB(Module):
         alu_array = RegArray(Bits(RV32I_ALU.CNT), ROB_SIZE)
         alu_valid_array = RegArray(Bits(1), ROB_SIZE)
         memory_from_rs_array = RegArray(Bits(2), ROB_SIZE)
+        mem_oper_signed_array = RegArray(Bits(1), ROB_SIZE)
+        mem_oper_size_array = RegArray(Bits(2), ROB_SIZE)
         rs1_val_array = RegArray(Bits(32), ROB_SIZE)
         rs1_valid_array = RegArray(Bits(1), ROB_SIZE)
         rs2_val_array = RegArray(Bits(32), ROB_SIZE)
@@ -93,6 +98,8 @@ class ROB(Module):
             alu_from_rs,
             alu_valid_from_rs,
             memory_from_rs,
+            mem_oper_signed_from_rs,
+            mem_oper_size_from_rs,
             rs1_val_from_rs,
             rs1_valid_from_rs,
             rs2_val_from_rs,
@@ -318,11 +325,36 @@ class ROB(Module):
                     Bits(ROB_SIZE_LOG)
                 )
                 write_1hot(ready_array_d, lsq_idx, Bits(1)(1))
-                write_1hot(value_array_d, lsq_idx, value_from_dcache[0])
+                sign = mem_oper_signed_array[lsq_idx]
+                size = mem_oper_size_array[lsq_idx]
+                value = value_from_dcache[0]
+                offset = mem_addr_from_lsq[0][0:1]  # get lowest 2 bits
+
+                byte_ext_bit = sign & value[7:7]
+                byte_ext = byte_ext_bit.select(Bits(24)(0xFFFFFF), Bits(24)(0))
+                byte_val = concat(byte_ext, value[0:7])
+                for i in range(4):
+                    byte_offset_flag = (offset == Bits(2)(i))
+                    byte_val = byte_offset_flag.select(
+                        concat(byte_ext, value[i << 3 : (i << 3) + 7]), byte_val
+                    )
+
+                half_ext_bit = sign & value[15:15]
+                half_ext = half_ext_bit.select(Bits(16)(0xFFFF), Bits(16)(0))
+                half_val = offset[0:0].select(concat(half_ext, value[0:15]) , concat(half_ext, value[16:31]))
+                
+
+                
+
+                final_val = (size == Bits(2)(0)).select(
+                    byte_val, (size == Bits(2)(1)).select(half_val, value)
+                )
+
+                write_1hot(value_array_d, lsq_idx, final_val)
                 self.log(
                     "Received from LSQ idx={}, value=0x{:08x}",
                     lsq_idx,
-                    value_from_dcache[0],
+                    final_val,
                 )
 
             # append new entry
@@ -351,6 +383,8 @@ class ROB(Module):
                 rs1_valid_array[idx] = rs1_valid_from_rs
                 alu_valid_array[idx] = alu_flag & ~is_branch_from_rs
                 memory_from_rs_array[idx] = memory_from_rs
+                mem_oper_signed_array[idx] = mem_oper_signed_from_rs
+                mem_oper_size_array[idx] = mem_oper_size_from_rs
                 rs2_valid_array[idx] = rs2_valid_from_rs
                 rs2_val_array[idx] = rs2_val_from_rs
                 dest_array[idx] = dest_from_rs

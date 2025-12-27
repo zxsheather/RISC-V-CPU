@@ -177,7 +177,7 @@ def build_simulator(
     max_cycles=50,
     icache_init_file: str | None = None,
     dcache_init_file: str | None = None,
-    bpu_kind: str = "global"
+    bpu_kind: str = "global",
 ):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
     depth_log = 10  # 2^10 = 1024条指令空间（默认）；如需更大程序可考虑改为 10（1024）
@@ -188,8 +188,7 @@ def build_simulator(
         fetcher = Fetcher()
         pc_reg, pc_addr = fetcher.build()
 
-        icache = SRAM(width=32, depth=1 << depth_log,
-                      init_file=icache_init_file)
+        icache = SRAM(width=32, depth=1 << depth_log, init_file=icache_init_file)
         icache.name = "icache"
 
         ifetch_continue_flag = RegArray(Bits(1), 1, initializer=[1])
@@ -212,14 +211,14 @@ def build_simulator(
         lsq_bypass_sq_pos_to_rs = RegArray(Bits(32), 1)
         lsq_bypass_valid_to_rs = RegArray(Bits(1), 1)
 
-        dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG,
-                      init_file=dcache_init_file)
+        dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG, init_file=dcache_init_file)
         dcache.name = "dcache"
 
         lsb_out_valid_to_rob = RegArray(Bits(1), 1)
         lsb_rob_dest_to_rob = RegArray(Bits(32), 1)
         rob_commit_sq_pos_to_lsq = RegArray(Bits(32), 1)
         rob_commit_valid_to_lsq = RegArray(Bits(1), 1)
+        lsq_mem_addr_to_rob = RegArray(Bits(32), 1)
 
         lsq = LSQ()
         lsq.build(
@@ -232,6 +231,7 @@ def build_simulator(
             revert_flag_cdb=revert_flag_cdb,
             valid_to_rs=lsq_bypass_valid_to_rs,
             update_sq_pos_to_rs=lsq_bypass_sq_pos_to_rs,
+            mem_addr_to_rob=lsq_mem_addr_to_rob,
         )
 
         bpu_predicted_pc = RegArray(Bits(32), 1)
@@ -260,6 +260,7 @@ def build_simulator(
             commit_sq_pos_to_lsq=rob_commit_sq_pos_to_lsq,
             commit_valid_to_lsq=rob_commit_valid_to_lsq,
             need_update_to_rs=rob_bypass_need_update_to_rs,
+            mem_addr_from_lsq=lsq_mem_addr_to_rob,
         )
 
         rs = ReservationStation()
@@ -402,7 +403,9 @@ def build_and_run(max_cycles=50, dcache_init_file=None, bpu_kind="global"):
     return success, verilog_path
 
 
-def run_all_workloads(max_cycles: int, *, timeout_s: int = 30, bpu_kind="global") -> int:
+def run_all_workloads(
+    max_cycles: int, *, timeout_s: int = 30, bpu_kind="global"
+) -> int:
     """编译一次仿真器，然后运行 workload/ 下所有子目录用例并校验 .ans。"""
     cases = discover_workload_cases()
     if not cases:
@@ -590,10 +593,9 @@ def main():
     )
     parser.add_argument(
         "--predictor",
-        choices=["tournament", "global", "two_bit",
-                 "always_false", "always_true"],
+        choices=["tournament", "global", "two_bit", "always_false", "always_true"],
         default="global",
-        help="Choose branch predictor"
+        help="Choose branch predictor",
     )
     args = parser.parse_args()
 
@@ -619,7 +621,13 @@ def main():
 
     # 优先使用 --workload 选项
     if args.workload:
-        instructions, dcache_init_file = load_workload_file(args.workload)
+        instructions, original_data_file = load_workload_file(args.workload)
+        dcache_init_file = f"{workspace}/dcache.data"
+        if original_data_file and os.path.exists(original_data_file):
+            _copy_text_file(original_data_file, dcache_init_file)
+        else:
+            with open(dcache_init_file, "w") as f:
+                pass
     elif args.test == "war":
         instructions = war_hazard_test()
     elif args.test == "waw":

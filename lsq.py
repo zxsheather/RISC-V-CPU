@@ -31,6 +31,7 @@ class LSQ(Module):
         depth_log: int,
         out_valid_to_rob,
         rob_dest_to_rob,
+        mem_addr_to_rob,
         commit_sq_pos_from_rob: Array,
         commit_valid_from_rob: Array,
         update_sq_pos_to_rs: Array,
@@ -231,6 +232,7 @@ class LSQ(Module):
                 lq_head[0] = (lq_head[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
                     Bits(32)
                 ) & Bits(32)(LSQ_SIZE - 1)
+                mem_addr_to_rob[0] = lq_addr_array[lq_head_pos]
 
             with Condition(store_flag):
                 with Condition(read_mux(sq_lsq_pos_array_d, sq_head[0]) == Bits(32)(0)):
@@ -253,6 +255,7 @@ class LSQ(Module):
                 sq_head[0] = (sq_head[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
                     Bits(32)
                 ) & Bits(32)(LSQ_SIZE - 1)
+                mem_addr_to_rob[0] = sq_addr_array[sq_head_pos]
 
 
         dcache.build(

@@ -59,7 +59,7 @@ class ReservationStation(Module):
         rd_valid_from_d = signals.rd_valid
         jump = jump_from_bpu[0]
 
-        with Condition(has_entry_from_d):
+        with Condition(has_entry_from_d & ~revert_flag_cdb[0]):
             self.log(
                 "New RS entry request: alu={}, memory={}, rd_valid={}, rd=x{:02}, rs1_valid={}, rs1=x{:02}, rs2_valid={}, rs2=x{:02}, imm_valid={}, pc=0x{:08x}, jump={}",
                 alu_from_d.bitcast(UInt(RV32I_ALU.CNT)),
@@ -144,7 +144,7 @@ class ReservationStation(Module):
             )
             sq_pos[0] = sq_pos_from_lsq[0]
 
-        new_val = in_valid_from_rob[0].select(value_from_rob[0], Bits(32)(0))
+        new_val = need_update_from_rob[0].select(value_from_rob[0], Bits(32)(0))
         new_val = (rd_array[in_index_from_rob[0]] == Bits(32)(0)).select(
             Bits(32)(0), new_val
         )
@@ -153,7 +153,7 @@ class ReservationStation(Module):
         update_index = in_index_from_rob[0]
         # Optimized logic to find the freed register
         # 1. Generate match mask in parallel
-        for i in range(RS_SIZE):
+        for i in range(32):
             is_match = reorder_busy_array_d[i][0] & (
                 reorder_array_d[i][0] == update_index
             )
@@ -162,6 +162,8 @@ class ReservationStation(Module):
 
         # 2. Calculate flag
         newly_freed_flag = match_mask != Bits(32)(0)
+        newly_freed_flag = (need_update_from_rob[0] & ~revert_flag_cdb[0]).select(
+            newly_freed_flag, Bits(1)(0))
 
         # 3. Calculate rd using select1hot
         possible_rds = [Bits(5)(i) for i in range(32)]
@@ -170,10 +172,6 @@ class ReservationStation(Module):
         raw_rd = safe_mask.select1hot(*possible_rds)
 
         newly_freed_rd = newly_freed_flag.select(raw_rd, Bits(5)(0))
-        newly_freed_rd = in_valid_from_rob[0].select(
-            newly_freed_rd, Bits(5)(0))
-        newly_freed_flag = in_valid_from_rob[0].select(
-            newly_freed_flag, Bits(1)(0))
         revert_flag = revert_flag_cdb[0]
 
         self.log("Busy entries in RS: {}",
@@ -514,6 +512,12 @@ class ReservationStation(Module):
         reuse_rd_flag = (has_entry_from_d & ~revert_flag).select(
             reuse_rd_flag, Bits(1)(0)
         )
+        with Condition(reuse_rd_flag):
+            self.log(
+                "New entry rd x{:02} reuses freed rd from ROB entry {}",
+                newly_freed_rd,
+                in_index_from_rob[0],
+            )
 
         with Condition(~reuse_rd_flag & newly_freed_flag & ~revert_flag):
             write_1hot(reorder_array_d, newly_freed_rd, Bits(32)(0))
@@ -562,6 +566,8 @@ class ReservationStation(Module):
             alu_from_rs=alu_array[dispatch_index],
             alu_valid_from_rs=alu_valid_array[dispatch_index],
             memory_from_rs=memory_array[dispatch_index],
+            mem_oper_size_from_rs=mem_oper_size_array[dispatch_index],
+            mem_oper_signed_from_rs=mem_oper_signed_array[dispatch_index],
             rs1_val_from_rs=read_mux(vj_array_d, dispatch_index),
             rs1_valid_from_rs=vj_valid_array[dispatch_index],
             rs2_val_from_rs=read_mux(vk_array_d, dispatch_index),
