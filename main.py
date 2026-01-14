@@ -254,7 +254,7 @@ def build_simulator(
     generate_verilog: bool | None = None,
 ):
     """只构建（elaborate+编译）仿真器，返回二进制路径与 verilog 输出路径。"""
-    depth_log = 14  # 2^14 = 16,384条指令空间（默认）；
+    depth_log = 16  # 2^14 = 16,384条指令空间（默认）；
     if dcache_init_file is None:
         dcache_init_file = icache_init_file
 

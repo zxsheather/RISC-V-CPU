@@ -22,9 +22,9 @@ class Decoder(Module):
 
         self.log(
             "valid={}, inst=0x{:08x}, pc=0x{:08x}",
-            inst_valid_from_fi.bitcast(UInt(5)),
+            inst_valid_from_fi.bitcast(UInt(32)),
             inst,
-            fetch_pc_from_fi.bitcast(UInt(5)),
+            fetch_pc_from_fi.bitcast(UInt(32)),
         )
 
         signals = decode_logic(inst=inst)
@@ -48,14 +48,14 @@ class Decoder(Module):
             self.log(
                 "Received revert signal, skipping decode"
             )
-            
 
         is_jal = signals.is_jal
         is_branch = signals.is_branch
         valid = inst_valid_from_fi & (~revert_flag_cdb[0])
         is_jal = valid.select(is_jal, Bits(1)(0))
         is_branch = valid.select(is_branch, Bits(1)(0))
-        target_pc = (fetch_pc_from_fi.bitcast(Int(32)) + signals.imm.bitcast(Int(32))).bitcast(Bits(32))
+        target_pc = (fetch_pc_from_fi.bitcast(Int(32)) +
+                     signals.imm.bitcast(Int(32))).bitcast(Bits(32))
 
         with Condition(is_jal):
             self.log(
@@ -70,7 +70,7 @@ class Decoder(Module):
                 target_pc,
             )
 
-        with Condition(inst==Bits(32)(0x00000000)):
+        with Condition(inst == Bits(32)(0x00000000)):
             self.log(
                 "Decoder detected NOP instruction"
             )

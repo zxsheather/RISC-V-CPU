@@ -28,6 +28,10 @@ def merge_hex_bytes(input_file: str, output_file: str | None = None) -> str:
             continue
         if line.startswith("@"):
             flush()
+            addr = int(line[1:], 16)
+            assert addr % 4 == 0, "Address in init file must be 4-byte aligned"
+            trunc_addr = addr // 4
+            line = f"@{trunc_addr:x}"
             out.append(line)
             continue
         parts = line.split()
