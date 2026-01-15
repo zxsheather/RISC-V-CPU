@@ -1,5 +1,6 @@
 from assassyn.frontend import *
-from utils import Logger, BPULogEnabled
+
+from .utils import BPULogEnabled, Logger
 
 
 class AlwaysFalseBPU(Downstream):
@@ -25,9 +26,9 @@ class AlwaysFalseBPU(Downstream):
         """
 
         predict_taken[0] = Bits(1)(0)
-        predicted_pc[0] = (
-            pc_addr_from_d.bitcast(Int(32)) + Bits(32)(4).bitcast(Int(32))
-        ).bitcast(Bits(32))
+        predicted_pc[0] = (pc_addr_from_d.bitcast(Int(32)) + Bits(32)(4).bitcast(Int(32))).bitcast(
+            Bits(32)
+        )
 
         with Condition(is_branch_from_d):
             self.log(
@@ -63,9 +64,7 @@ class AlwaysTakenBPU(Downstream):
         predict_taken[0] = is_branch_from_d
         predicted_pc_addr = is_branch_from_d.select(
             target_pc_from_d,
-            (pc_addr_from_d.bitcast(Int(32)) + Bits(32)(4).bitcast(Int(32))).bitcast(
-                Bits(32)
-            ),
+            (pc_addr_from_d.bitcast(Int(32)) + Bits(32)(4).bitcast(Int(32))).bitcast(Bits(32)),
         )
         predicted_pc[0] = predicted_pc_addr
 
@@ -104,21 +103,15 @@ class TwoBitBPU(Downstream):
         index_bits = 10  # log2(bpu_size)
         bpu_counters = RegArray(Bits(2), bpu_size)
 
-        pc_index = pc_addr_from_d[
-            2: 2 + index_bits - 1
-        ]  # Use bits [2:12] of PC as index
+        pc_index = pc_addr_from_d[2 : 2 + index_bits - 1]  # Use bits [2:12] of PC as index
 
         counter = bpu_counters[pc_index]
 
         branch_predict_taken = counter[1:1]
-        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) +
-                     Int(32)(4)).bitcast(Bits(32))
-        branch_predicted_pc = branch_predict_taken.select(
-            target_pc_from_d, pc_plus_4
-        )
+        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) + Int(32)(4)).bitcast(Bits(32))
+        branch_predicted_pc = branch_predict_taken.select(target_pc_from_d, pc_plus_4)
 
-        predict_taken_flag = is_branch_from_d.select(
-            branch_predict_taken, Bits(1)(0))
+        predict_taken_flag = is_branch_from_d.select(branch_predict_taken, Bits(1)(0))
         predicted_pc_addr = is_branch_from_d.select(
             branch_predicted_pc,
             pc_plus_4,
@@ -136,7 +129,7 @@ class TwoBitBPU(Downstream):
         predict_taken[0] = predict_taken_flag
 
         with Condition(commit_branch_from_rob[0]):
-            rob_pc_index = pc_addr_from_rob[0][2: 2 + index_bits - 1]
+            rob_pc_index = pc_addr_from_rob[0][2 : 2 + index_bits - 1]
             actual_taken_flag = actual_taken_from_rob[0]
 
             counter = bpu_counters[rob_pc_index]
@@ -201,15 +194,11 @@ class GlobalHistoryBPU(Downstream):
         counter = pht[idx]
 
         branch_predict_taken = counter[1:1]
-        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) +
-                     Int(32)(4)).bitcast(Bits(32))
-        branch_predicted_pc = branch_predict_taken.select(
-            target_pc_from_d, pc_plus_4)
+        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) + Int(32)(4)).bitcast(Bits(32))
+        branch_predicted_pc = branch_predict_taken.select(target_pc_from_d, pc_plus_4)
 
-        predict_taken_flag = is_branch_from_d.select(
-            branch_predict_taken, Bits(1)(0))
-        predicted_pc_addr = is_branch_from_d.select(
-            branch_predicted_pc, pc_plus_4)
+        predict_taken_flag = is_branch_from_d.select(branch_predict_taken, Bits(1)(0))
+        predicted_pc_addr = is_branch_from_d.select(branch_predicted_pc, pc_plus_4)
 
         with Condition(is_branch_from_d):
             self.log(
@@ -242,12 +231,12 @@ class GlobalHistoryBPU(Downstream):
             pht[old_hist] = new_counter
 
             hist_u = old_hist.bitcast(UInt(self.index_bits))
-            shifted = ((hist_u << UInt(self.index_bits)(1)) | actual_taken_flag.bitcast(
+            shifted = (hist_u << UInt(self.index_bits)(1)) | actual_taken_flag.bitcast(
                 UInt(self.index_bits)
-            ))
-            new_hist = ((shifted & Bits(self.index_bits)(self.mask_bits).bitcast(
-                UInt(self.index_bits)
-            )).bitcast(Bits(self.index_bits)))
+            )
+            new_hist = (
+                shifted & Bits(self.index_bits)(self.mask_bits).bitcast(UInt(self.index_bits))
+            ).bitcast(Bits(self.index_bits))
             global_history[0] = new_hist
 
             self.log(
@@ -297,10 +286,9 @@ class TournamentBPU(Downstream):
         chooser = RegArray(Bits(2), 1 << self.chooser_bits)
         global_history = RegArray(Bits(self.global_bits), 1)
 
-        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) +
-                     Int(32)(4)).bitcast(Bits(32))
+        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) + Int(32)(4)).bitcast(Bits(32))
 
-        local_idx = pc_addr_from_d[2: 2 + self.local_bits - 1]
+        local_idx = pc_addr_from_d[2 : 2 + self.local_bits - 1]
         local_ctr = local_pht[local_idx]
         local_taken = local_ctr[1:1]
         local_pc_pred = local_taken.select(target_pc_from_d, pc_plus_4)
@@ -310,7 +298,7 @@ class TournamentBPU(Downstream):
         global_taken = global_ctr[1:1]
         global_pc_pred = global_taken.select(target_pc_from_d, pc_plus_4)
 
-        chooser_idx = pc_addr_from_d[2: 2 + self.chooser_bits - 1]
+        chooser_idx = pc_addr_from_d[2 : 2 + self.chooser_bits - 1]
         chooser_ctr = chooser[chooser_idx]
         use_global = chooser_ctr[1:1]
 
@@ -339,8 +327,8 @@ class TournamentBPU(Downstream):
         with Condition(commit_branch_from_rob[0]):
             actual_taken_flag = actual_taken_from_rob[0]
 
-            local_idx_c = pc_addr_from_rob[0][2: 2 + self.local_bits - 1]
-            chooser_idx_c = pc_addr_from_rob[0][2: 2 + self.chooser_bits - 1]
+            local_idx_c = pc_addr_from_rob[0][2 : 2 + self.local_bits - 1]
+            chooser_idx_c = pc_addr_from_rob[0][2 : 2 + self.chooser_bits - 1]
 
             local_ctr_old = local_pht[local_idx_c]
             plus_local = (local_ctr_old != Bits(2)(3)) & actual_taken_flag
@@ -358,8 +346,7 @@ class TournamentBPU(Downstream):
             ghr_old = global_history[0]
             global_ctr_old = global_pht[ghr_old]
             plus_global = (global_ctr_old != Bits(2)(3)) & actual_taken_flag
-            minus_global = (global_ctr_old != Bits(2)
-                            (0)) & (~actual_taken_flag)
+            minus_global = (global_ctr_old != Bits(2)(0)) & (~actual_taken_flag)
             global_ctr_new = plus_global.select(
                 (global_ctr_old.bitcast(Int(2)) + Int(2)(1)).bitcast(Bits(2)),
                 global_ctr_old,
@@ -370,13 +357,11 @@ class TournamentBPU(Downstream):
             )
             global_pht[ghr_old] = global_ctr_new
 
-            local_correct = (local_ctr_old[1:1] == actual_taken_flag)
-            global_correct = (global_ctr_old[1:1] == actual_taken_flag)
+            local_correct = local_ctr_old[1:1] == actual_taken_flag
+            global_correct = global_ctr_old[1:1] == actual_taken_flag
             chooser_ctr_old = chooser[chooser_idx_c]
-            inc_chooser = global_correct & (~local_correct) & (
-                chooser_ctr_old != Bits(2)(3))
-            dec_chooser = local_correct & (~global_correct) & (
-                chooser_ctr_old != Bits(2)(0))
+            inc_chooser = global_correct & (~local_correct) & (chooser_ctr_old != Bits(2)(3))
+            dec_chooser = local_correct & (~global_correct) & (chooser_ctr_old != Bits(2)(0))
             chooser_ctr_new = inc_chooser.select(
                 (chooser_ctr_old.bitcast(Int(2)) + Int(2)(1)).bitcast(Bits(2)),
                 chooser_ctr_old,
@@ -464,8 +449,7 @@ class TageBPU(Downstream):
         acc = value_u & UInt(self.ghr_bits)(mask)
         shift = width
         while shift < self.ghr_bits:
-            acc = acc ^ ((value_u >> UInt(self.ghr_bits)(shift))
-                         & UInt(self.ghr_bits)(mask))
+            acc = acc ^ ((value_u >> UInt(self.ghr_bits)(shift)) & UInt(self.ghr_bits)(mask))
             shift += width
         return acc.bitcast(UInt(width))
 
@@ -479,9 +463,9 @@ class TageBPU(Downstream):
         return (assembled).bitcast(Bits(total))
 
     def _entry_fields(self, entry: Value):
-        u = entry[0:1]          # 2-bit usefulness
-        ctr = entry[2:4]        # 3-bit counter
-        tag = entry[5:5 + self.tag_bits - 1]
+        u = entry[0:1]  # 2-bit usefulness
+        ctr = entry[2:4]  # 3-bit counter
+        tag = entry[5 : 5 + self.tag_bits - 1]
         return tag, ctr, u
 
     @downstream.combinational
@@ -501,18 +485,15 @@ class TageBPU(Downstream):
         Predict path is combinational; updates happen when ROB commits a branch.
         """
         base_table = RegArray(Bits(2), self.base_size)
-        tagged_tables = [
-            RegArray(Bits(self.tag_bits + 3 + 2), sz) for sz in self.tag_sizes
-        ]
+        tagged_tables = [RegArray(Bits(self.tag_bits + 3 + 2), sz) for sz in self.tag_sizes]
         ghr = RegArray(Bits(self.ghr_bits), 1)
         meta = RegArray(Bits(self.meta_width), 1 << self.meta_idx_bits)
 
-        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) +
-                     Int(32)(4)).bitcast(Bits(32))
+        pc_plus_4 = (pc_addr_from_d.bitcast(Int(32)) + Int(32)(4)).bitcast(Bits(32))
 
         # calculate unique index and tag for each bank
         ghr_val = ghr[0].bitcast(UInt(self.ghr_bits))
-        base_idx = pc_addr_from_d[2: 2 + self.base_idx_bits - 1]
+        base_idx = pc_addr_from_d[2 : 2 + self.base_idx_bits - 1]
         idxs = []
         tags = []
         for hist_len, idx_bits in zip(self.hist_lens, self.idx_bits):
@@ -520,8 +501,8 @@ class TageBPU(Downstream):
             tag_mask = (1 << self.tag_bits) - 1
             folded_idx = self._fold(ghr_val, idx_bits)
             folded_tag = self._fold(ghr_val, self.tag_bits)
-            pc_idx = pc_addr_from_d[2: 2 + idx_bits - 1]
-            pc_tag = pc_addr_from_d[2: 2 + self.tag_bits - 1]
+            pc_idx = pc_addr_from_d[2 : 2 + idx_bits - 1]
+            pc_tag = pc_addr_from_d[2 : 2 + self.tag_bits - 1]
             idxs.append((folded_idx ^ pc_idx) & Bits(idx_bits)(idx_mask))
             tags.append((folded_tag ^ pc_tag) & Bits(self.tag_bits)(tag_mask))
 
@@ -550,41 +531,35 @@ class TageBPU(Downstream):
         # the alt is chosen after provider is chosen so it's second best
         for bank_id in reversed(range(self.num_banks)):  # highest hist first
             choose_provider = matches[bank_id] & (provider_bank == Bits(2)(0))
-            provider_bank = choose_provider.select(
-                Bits(2)(bank_id + 1), provider_bank)
-            provider_ctr = choose_provider.select(
-                ctrs[bank_id], provider_ctr.bitcast(Bits(3)))
+            provider_bank = choose_provider.select(Bits(2)(bank_id + 1), provider_bank)
+            provider_ctr = choose_provider.select(ctrs[bank_id], provider_ctr.bitcast(Bits(3)))
             provider_idx = choose_provider.select(
-                idxs[bank_id], provider_idx.bitcast(Bits(self.idx_bits[bank_id])))
+                idxs[bank_id], provider_idx.bitcast(Bits(self.idx_bits[bank_id]))
+            )
             provider_tag = choose_provider.select(
-                tags[bank_id], provider_tag.bitcast(Bits(self.tag_bits)))
-            provider_pred = choose_provider.select(
-                ctrs[bank_id][2:2], provider_pred)
-            choose_alt = matches[bank_id] & (
-                alt_bank == Bits(2)(0)) & (~choose_provider)
+                tags[bank_id], provider_tag.bitcast(Bits(self.tag_bits))
+            )
+            provider_pred = choose_provider.select(ctrs[bank_id][2:2], provider_pred)
+            choose_alt = matches[bank_id] & (alt_bank == Bits(2)(0)) & (~choose_provider)
             alt_bank = choose_alt.select(Bits(2)(bank_id + 1), alt_bank)
             alt_pred = choose_alt.select(ctrs[bank_id][2:2], alt_pred)
 
-        provider_weak = (provider_ctr >= Bits(3)(3)) & (
-            provider_ctr <= Bits(3)(4))
+        provider_weak = (provider_ctr >= Bits(3)(3)) & (provider_ctr <= Bits(3)(4))
         use_alt = provider_weak & (alt_bank != Bits(2)(0))
         final_pred_taken = use_alt.select(alt_pred, provider_pred)
-        predicted_pc_addr = final_pred_taken.select(
-            target_pc_from_d, pc_plus_4)
+        predicted_pc_addr = final_pred_taken.select(target_pc_from_d, pc_plus_4)
 
         predicted_pc[0] = is_branch_from_d.select(predicted_pc_addr, pc_plus_4)
-        predict_taken[0] = is_branch_from_d.select(
-            final_pred_taken, Bits(1)(0))
+        predict_taken[0] = is_branch_from_d.select(final_pred_taken, Bits(1)(0))
 
         # Pack meta per PC bucket (LSB-first packing)
-        meta_idx = pc_addr_from_d[2: 2 + self.meta_idx_bits - 1]
+        meta_idx = pc_addr_from_d[2 : 2 + self.meta_idx_bits - 1]
         idx_pad = []
         for idx_val in idxs:
             idx_pad.append(idx_val.bitcast(Bits(self.max_idx_bits)))
         while len(idx_pad) < self.num_banks:
             idx_pad.append(Bits(self.max_idx_bits)(0))
-        tag_pad = tags + [Bits(self.tag_bits)(0)] * \
-            (self.num_banks - len(tags))
+        tag_pad = tags + [Bits(self.tag_bits)(0)] * (self.num_banks - len(tags))
 
         acc = Bits(self.meta_width)(0)
         off = 0
@@ -592,8 +567,7 @@ class TageBPU(Downstream):
         def insert(val: Value, width: int):
             nonlocal acc, off
             acc_u = acc.bitcast(Bits(self.meta_width))
-            acc = acc_u | (val.bitcast(Bits(self.meta_width))
-                           << Bits(self.meta_width)(off))
+            acc = acc_u | (val.bitcast(Bits(self.meta_width)) << Bits(self.meta_width)(off))
             off += width
 
         insert(provider_pred, 1)
@@ -611,7 +585,7 @@ class TageBPU(Downstream):
         with Condition(commit_branch_from_rob[0]):
             actual_taken_flag = actual_taken_from_rob[0]
             rob_pc = pc_addr_from_rob[0]
-            meta_idx_c = rob_pc[2: 2 + self.meta_idx_bits - 1]
+            meta_idx_c = rob_pc[2 : 2 + self.meta_idx_bits - 1]
             meta_rd = meta[meta_idx_c].bitcast(UInt(self.meta_width))
 
             def extract(width: int, shift: int):
@@ -661,7 +635,7 @@ class TageBPU(Downstream):
             for bank_id in range(self.num_banks):
                 with Condition(provider_bank_m == Bits(2)(bank_id + 1)):
                     idx_full = idx_list[bank_id]
-                    idx_narrow = idx_full[0: self.idx_bits[bank_id] - 1]
+                    idx_narrow = idx_full[0 : self.idx_bits[bank_id] - 1]
                     tag_val = tag_list[bank_id]
                     entry = tagged_tables[bank_id][idx_narrow]
                     tag_rd, ctr_rd, u_rd = self._entry_fields(entry)
@@ -677,44 +651,50 @@ class TageBPU(Downstream):
                             new_ctr,
                         )
                         new_u = u_rd
-                        new_u = (provider_correct & (~alt_correct)
-                                 ).select(Bits(2)(3), new_u)
-                        new_u = ((~provider_correct) & alt_correct & (u_rd != Bits(2)(0))).select((u_rd.bitcast(Int(2)) -
-                                                                                                   Int(2)(1)).bitcast(Bits(2)), new_u)
+                        new_u = (provider_correct & (~alt_correct)).select(Bits(2)(3), new_u)
+                        new_u = ((~provider_correct) & alt_correct & (u_rd != Bits(2)(0))).select(
+                            (u_rd.bitcast(Int(2)) - Int(2)(1)).bitcast(Bits(2)), new_u
+                        )
                         tagged_tables[bank_id][idx_narrow] = self._pack_entry(
-                            tag_rd, new_ctr, new_u)
+                            tag_rd, new_ctr, new_u
+                        )
 
             # Allocation on mispredict: prefer shortest longer history with u==0; if none, age u in longer banks.
             found_zero = Bits(1)(0)
             for bank_id in range(self.num_banks):
                 cond_longer = (provider_correct == Bits(1)(0)) & (
-                    Bits(2)(bank_id + 1) > provider_bank_m)
+                    Bits(2)(bank_id + 1) > provider_bank_m
+                )
                 idx_full = idx_list[bank_id]
-                idx_narrow = idx_full[0: self.idx_bits[bank_id] - 1]
-                _, _, u_rd = self._entry_fields(
-                    tagged_tables[bank_id][idx_narrow])
+                idx_narrow = idx_full[0 : self.idx_bits[bank_id] - 1]
+                _, _, u_rd = self._entry_fields(tagged_tables[bank_id][idx_narrow])
                 found_zero = found_zero | (cond_longer & (u_rd == Bits(2)(0)))
 
             allocated = Bits(1)(0)
             for bank_id in range(self.num_banks):  # shortest longer first
                 cond_longer = (provider_correct == Bits(1)(0)) & (
-                    Bits(2)(bank_id + 1) > provider_bank_m)
+                    Bits(2)(bank_id + 1) > provider_bank_m
+                )
                 idx_full = idx_list[bank_id]
-                idx_narrow = idx_full[0: self.idx_bits[bank_id] - 1]
+                idx_narrow = idx_full[0 : self.idx_bits[bank_id] - 1]
                 tag_val = tag_list[bank_id]
                 entry = tagged_tables[bank_id][idx_narrow]
                 tag_rd, ctr_rd, u_rd = self._entry_fields(entry)
 
-                cond_alloc = cond_longer & (found_zero == Bits(1)(1)) & (allocated == Bits(1)(0)) & (u_rd == Bits(2)
-                                                                                                     (0))
+                cond_alloc = (
+                    cond_longer
+                    & (found_zero == Bits(1)(1))
+                    & (allocated == Bits(1)(0))
+                    & (u_rd == Bits(2)(0))
+                )
                 with Condition(cond_alloc):
                     weak_ctr = actual_taken_flag.select(Bits(3)(4), Bits(3)(3))
                     tagged_tables[bank_id][idx_narrow] = self._pack_entry(
-                        tag_val, weak_ctr, Bits(2)(0))
+                        tag_val, weak_ctr, Bits(2)(0)
+                    )
                 allocated = allocated | cond_alloc
 
-                cond_age = cond_longer & (
-                    found_zero == Bits(1)(0)) & (u_rd != Bits(2)(0))
+                cond_age = cond_longer & (found_zero == Bits(1)(0)) & (u_rd != Bits(2)(0))
                 with Condition(cond_age):
                     tagged_tables[bank_id][idx_narrow] = self._pack_entry(
                         tag_rd,
@@ -724,11 +704,11 @@ class TageBPU(Downstream):
 
             # GHR update
             ghr_old = ghr[0].bitcast(UInt(self.ghr_bits))
-            ghr_shifted = (ghr_old << UInt(self.ghr_bits)(
-                1)) | actual_taken_flag.bitcast(UInt(self.ghr_bits))
+            ghr_shifted = (ghr_old << UInt(self.ghr_bits)(1)) | actual_taken_flag.bitcast(
+                UInt(self.ghr_bits)
+            )
             ghr_mask = (1 << self.ghr_bits) - 1
-            ghr_new = (ghr_shifted & UInt(self.ghr_bits)(
-                ghr_mask)).bitcast(Bits(self.ghr_bits))
+            ghr_new = (ghr_shifted & UInt(self.ghr_bits)(ghr_mask)).bitcast(Bits(self.ghr_bits))
             ghr[0] = ghr_new
 
             self.log(
@@ -740,8 +720,6 @@ class TageBPU(Downstream):
                 ghr_new.bitcast(UInt(self.ghr_bits)),
             )
 
-        predict_taken_flag = is_branch_from_d.select(
-            final_pred_taken, Bits(1)(0))
-        predicted_pc_addr = is_branch_from_d.select(
-            predicted_pc_addr, pc_plus_4)
+        predict_taken_flag = is_branch_from_d.select(final_pred_taken, Bits(1)(0))
+        predicted_pc_addr = is_branch_from_d.select(predicted_pc_addr, pc_plus_4)
         return predict_taken_flag, predicted_pc_addr

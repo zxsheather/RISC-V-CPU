@@ -1,6 +1,7 @@
 from assassyn.frontend import *
-from instruction import *
-from utils import Logger, DecoderLogEnabled
+
+from .instruction import *
+from .utils import DecoderLogEnabled, Logger
 
 
 class Decoder(Module):
@@ -41,21 +42,20 @@ class Decoder(Module):
             signals.imm,
             signals.mem_oper_size.bitcast(UInt(2)),
             signals.mem_oper_signed.bitcast(UInt(1)),
-            signals.is_mul.bitcast(UInt(1))
+            signals.is_mul.bitcast(UInt(1)),
         )
 
         with Condition(revert_flag_cdb[0]):
-            self.log(
-                "Received revert signal, skipping decode"
-            )
+            self.log("Received revert signal, skipping decode")
 
         is_jal = signals.is_jal
         is_branch = signals.is_branch
         valid = inst_valid_from_fi & (~revert_flag_cdb[0])
         is_jal = valid.select(is_jal, Bits(1)(0))
         is_branch = valid.select(is_branch, Bits(1)(0))
-        target_pc = (fetch_pc_from_fi.bitcast(Int(32)) +
-                     signals.imm.bitcast(Int(32))).bitcast(Bits(32))
+        target_pc = (fetch_pc_from_fi.bitcast(Int(32)) + signals.imm.bitcast(Int(32))).bitcast(
+            Bits(32)
+        )
 
         with Condition(is_jal):
             self.log(
@@ -71,9 +71,7 @@ class Decoder(Module):
             )
 
         with Condition(inst == Bits(32)(0x00000000)):
-            self.log(
-                "Decoder detected NOP instruction"
-            )
+            self.log("Decoder detected NOP instruction")
 
         rs.async_called(
             decode_signals=signals,
@@ -157,9 +155,7 @@ def decode_logic(inst):
         with Condition(eq):
             my_log(fmt, *args)
 
-    alu_valid = (alu == Bits(RV32I_ALU.CNT)(0)).select(
-        Bits(1)(0), Bits(1)(1)
-    )
+    alu_valid = (alu == Bits(RV32I_ALU.CNT)(0)).select(Bits(1)(0), Bits(1)(1))
 
     memory = concat(
         eqs["sb"] | eqs["sh"] | eqs["sw"],
@@ -186,13 +182,7 @@ def decode_logic(inst):
     rd = rd_valid.select(views[RInst].view().rd, Bits(5)(0))
     rs1 = rs1_valid.select(views[RInst].view().rs1, Bits(5)(0))
     rs2 = rs2_valid.select(views[RInst].view().rs2, Bits(5)(0))
-    imm_valid = (
-        is_type[IInst]
-        | is_type[SInst]
-        | is_type[BInst]
-        | is_type[UInst]
-        | is_type[JInst]
-    )
+    imm_valid = is_type[IInst] | is_type[SInst] | is_type[BInst] | is_type[UInst] | is_type[JInst]
     imm = Bits(32)(0)
     for i in supported_types:
         new_imm = views[i].imm(True)

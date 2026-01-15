@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-    Merge every four bytes in a hex file into a single 32-bit word (little-endian).
-    Preserves @ segment markers. Accepts bytes with/without spaces. Pads trailing bytes with 0.
+Merge every four bytes in a hex file into a single 32-bit word (little-endian).
+Preserves @ segment markers. Accepts bytes with/without spaces. Pads trailing bytes with 0.
 """
 
 import argparse
@@ -38,7 +38,7 @@ def merge_hex_bytes(input_file: str, output_file: str | None = None) -> str:
         for part in parts:
             # allow continuous hex like 37010200
             for i in range(0, len(part), 2):
-                byte = part[i:i+2]
+                byte = part[i : i + 2]
                 if len(byte) == 2:
                     buf.append(byte)
     flush()
@@ -54,8 +54,7 @@ def main():
         description="Merge every four bytes in a hex file into a 32-bit number (little-endian)"
     )
     p.add_argument("input", help="Input hex file path")
-    p.add_argument("-o", "--output",
-                   help="Output file (stdout if omitted)")
+    p.add_argument("-o", "--output", help="Output file (stdout if omitted)")
     args = p.parse_args()
 
     inp = Path(args.input)
@@ -66,8 +65,7 @@ def main():
     try:
         result = merge_hex_bytes(str(inp), args.output)
         if args.output:
-            print(
-                f"Successfully converted and saved to '{args.output}'", file=sys.stderr)
+            print(f"Successfully converted and saved to '{args.output}'", file=sys.stderr)
         else:
             print(result)
     except Exception as e:

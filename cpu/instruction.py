@@ -90,7 +90,6 @@ class IInst(InstType):
             value=value,
         )
 
-    
     def imm(self, pad):
         raw = self.view().imm
         if pad:
@@ -99,7 +98,6 @@ class IInst(InstType):
             raw = concat(signal, raw)
         return raw
 
-    
     def decode(self, opcode, funct3, alu, cond, ex_code, ex_code2):
         view = self.view()
         opcode = view.opcode == Bits(7)(opcode)
@@ -134,7 +132,6 @@ class SInst(InstType):
             value=value,
         )
 
-    
     def decode(self, opcode, funct3, alu):
         view = self.view()
         opcode = view.opcode == Bits(7)(opcode)
@@ -142,7 +139,6 @@ class SInst(InstType):
         eq = opcode & funct3
         return InstSignal(eq=eq, alu=alu)
 
-    
     def imm(self, pad):
         imm = self.view().imm11_5.concat(self.view().imm4_0)
         if pad:
@@ -167,13 +163,11 @@ class UInst(InstType):
             value=value,
         )
 
-    
     def decode(self, opcode, alu):
         view = self.view()
         eq = view.opcode == Bits(7)(opcode)
         return InstSignal(eq=eq, alu=alu)
 
-    
     def imm(self, pad):
         raw = self.view().imm
         if pad:
@@ -202,13 +196,11 @@ class JInst(InstType):
             value=value,
         )
 
-    
     def decode(self, opcode, alu, cond):
         view = self.view()
         eq = view.opcode == Bits(7)(opcode)
         return InstSignal(eq=eq, alu=alu, cond=cond)
 
-    
     def imm(self, pad):
         view = self.view()
         imm = concat(view.imm20, view.imm19_12, view.imm11, view.imm10_1, Bits(1)(0))
@@ -240,23 +232,22 @@ class BInst(InstType):
             value=value,
         )
 
-    
     def decode(self, opcode, funct3, cmp, flip):
         view = self.view()
         opcode = view.opcode == Bits(7)(opcode)
         funct3 = view.funct3 == Bits(3)(funct3)
         eq = opcode & funct3
         return InstSignal(eq, alu=0, cond=(cmp, flip))
-    
-    
+
     def imm(self, pad):
         imm = concat(self.view().imm12, self.view().imm11, self.view().imm10_5, self.view().imm4_1)
         imm = imm.concat(Bits(1)(0))
         if pad:
             signal = imm[12:12]
-            signal = signal.select(Bits(19)(0x7ffff), Bits(19)(0))
+            signal = signal.select(Bits(19)(0x7FFFF), Bits(19)(0))
             imm = concat(signal, imm)
         return imm
+
 
 class RV32I_ALU:
 
@@ -309,10 +300,8 @@ DecodeSignals = Record(
     is_branch=Bits(1),
     # memory[0:0] is read, memory[1:1] is write
     memory=Bits(2),
-
     is_offset_br=Bits(1),
     link_pc=Bits(1),
-
     # memory operation size: 0 - byte, 1 - half, 2 - word
     mem_oper_size=Bits(2),
     # memory operation signedness: 0 - signed, 1 - unsigned
@@ -362,67 +351,58 @@ decoder_signal_default = DecodeSignals.bundle(
 
 supported_opcodes = [
     # J type (opcode, alu, cond)
-    ('jal'  ,   (0b1101111, RV32I_ALU.ALU_ADD, (RV32I_ALU.ALU_TRUE, False)), JInst),
-
+    ("jal", (0b1101111, RV32I_ALU.ALU_ADD, (RV32I_ALU.ALU_TRUE, False)), JInst),
     # U type (opcode, alu)
-    ('lui'  ,   (0b0110111, RV32I_ALU.ALU_ADD), UInst),
-    ('auipc',   (0b0010111, RV32I_ALU.ALU_ADD), UInst),
-
+    ("lui", (0b0110111, RV32I_ALU.ALU_ADD), UInst),
+    ("auipc", (0b0010111, RV32I_ALU.ALU_ADD), UInst),
     # I type (opcode, funct3, alu, cond, ex_code, ex_code2)
-    ('jalr' ,   (0b1100111, 0b000, RV32I_ALU.ALU_ADD, (RV32I_ALU.ALU_TRUE, False), None, None), IInst),
-    ('lb'   ,   (0b0000011, 0b000, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('lh'   ,   (0b0000011, 0b001, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('lw'   ,   (0b0000011, 0b010, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('lbu'  ,   (0b0000011, 0b100, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('lhu'  ,   (0b0000011, 0b101, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('addi' ,   (0b0010011, 0b000, RV32I_ALU.ALU_ADD, None, None, None), IInst),
-    ('andi' ,   (0b0010011, 0b111, RV32I_ALU.ALU_AND, None, None, None), IInst),
-    ('ori'  ,   (0b0010011, 0b110, RV32I_ALU.ALU_OR, None, None, None), IInst),
-    ('xori' ,   (0b0010011, 0b100, RV32I_ALU.ALU_XOR, None, None, None), IInst),
-    ('slti' ,   (0b0010011, 0b010, RV32I_ALU.ALU_CMP_LT, None, None, None), IInst),
-    ('sltiu',   (0b0010011, 0b011, RV32I_ALU.ALU_CMP_LTU, None, None, None), IInst),
-    ('slli' ,   (0b0010011, 0b001, RV32I_ALU.ALU_SLL, None, None, 0b000000), IInst),
-    ('srli' ,   (0b0010011, 0b101, RV32I_ALU.ALU_SRL, None, None, 0b000000), IInst),
-    ('srai' ,   (0b0010011, 0b101, RV32I_ALU.ALU_SRA, None, None, 0b010000), IInst),
-    
+    ("jalr", (0b1100111, 0b000, RV32I_ALU.ALU_ADD, (RV32I_ALU.ALU_TRUE, False), None, None), IInst),
+    ("lb", (0b0000011, 0b000, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("lh", (0b0000011, 0b001, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("lw", (0b0000011, 0b010, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("lbu", (0b0000011, 0b100, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("lhu", (0b0000011, 0b101, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("addi", (0b0010011, 0b000, RV32I_ALU.ALU_ADD, None, None, None), IInst),
+    ("andi", (0b0010011, 0b111, RV32I_ALU.ALU_AND, None, None, None), IInst),
+    ("ori", (0b0010011, 0b110, RV32I_ALU.ALU_OR, None, None, None), IInst),
+    ("xori", (0b0010011, 0b100, RV32I_ALU.ALU_XOR, None, None, None), IInst),
+    ("slti", (0b0010011, 0b010, RV32I_ALU.ALU_CMP_LT, None, None, None), IInst),
+    ("sltiu", (0b0010011, 0b011, RV32I_ALU.ALU_CMP_LTU, None, None, None), IInst),
+    ("slli", (0b0010011, 0b001, RV32I_ALU.ALU_SLL, None, None, 0b000000), IInst),
+    ("srli", (0b0010011, 0b101, RV32I_ALU.ALU_SRL, None, None, 0b000000), IInst),
+    ("srai", (0b0010011, 0b101, RV32I_ALU.ALU_SRA, None, None, 0b010000), IInst),
     # R type (opcode, funct3, funct7, alu)
-    ('add'  ,   (0b0110011, 0b000, 0b0000000, RV32I_ALU.ALU_ADD), RInst),
-    ('sub'  ,   (0b0110011, 0b000, 0b0100000, RV32I_ALU.ALU_SUB), RInst),
-    ('and'  ,   (0b0110011, 0b111, 0b0000000, RV32I_ALU.ALU_AND), RInst),
-    ('or'   ,   (0b0110011, 0b110, 0b0000000, RV32I_ALU.ALU_OR), RInst),
-    ('xor'  ,   (0b0110011, 0b100, 0b0000000, RV32I_ALU.ALU_XOR), RInst),
-    ('sll'  ,   (0b0110011, 0b001, 0b0000000, RV32I_ALU.ALU_SLL), RInst),
-    ('srl'  ,   (0b0110011, 0b101, 0b0000000, RV32I_ALU.ALU_SRL), RInst),
-    ('sra'  ,   (0b0110011, 0b101, 0b0100000, RV32I_ALU.ALU_SRA), RInst),
-    ('slt'  ,   (0b0110011, 0b010, 0b0000000, RV32I_ALU.ALU_CMP_LT), RInst),
-    ('sltu' ,   (0b0110011, 0b011, 0b0000000, RV32I_ALU.ALU_CMP_LTU), RInst),
-
-    ('mul'    , (0b0110011, 0b000, 0b0000001, RV32I_ALU.ALU_MUL), RInst),
-    ('mulh'   , (0b0110011, 0b001, 0b0000001, RV32I_ALU.ALU_MULH), RInst),
-    ('mulhsu' , (0b0110011, 0b010, 0b0000001, RV32I_ALU.ALU_MULHSU), RInst),
-    ('mulhu'  , (0b0110011, 0b011, 0b0000001, RV32I_ALU.ALU_MULHU), RInst),
-
-    ('div'    , (0b0110011, 0b100, 0b0000001, RV32I_ALU.ALU_DIV), RInst),
-    ('divu'   , (0b0110011, 0b101, 0b0000001, RV32I_ALU.ALU_DIVU), RInst),
-    ('rem'    , (0b0110011, 0b110, 0b0000001, RV32I_ALU.ALU_REM), RInst),
-    ('remu'   , (0b0110011, 0b111, 0b0000001, RV32I_ALU.ALU_REMU), RInst),
-
-    ('ebreak', (0b1110011, 0b000, RV32I_ALU.ALU_NONE, None,0b000000000001,None), IInst),
-    ('ecall' , (0b1110011, 0b000, RV32I_ALU.ALU_NONE, None,0b000000000000,None), IInst),
-
+    ("add", (0b0110011, 0b000, 0b0000000, RV32I_ALU.ALU_ADD), RInst),
+    ("sub", (0b0110011, 0b000, 0b0100000, RV32I_ALU.ALU_SUB), RInst),
+    ("and", (0b0110011, 0b111, 0b0000000, RV32I_ALU.ALU_AND), RInst),
+    ("or", (0b0110011, 0b110, 0b0000000, RV32I_ALU.ALU_OR), RInst),
+    ("xor", (0b0110011, 0b100, 0b0000000, RV32I_ALU.ALU_XOR), RInst),
+    ("sll", (0b0110011, 0b001, 0b0000000, RV32I_ALU.ALU_SLL), RInst),
+    ("srl", (0b0110011, 0b101, 0b0000000, RV32I_ALU.ALU_SRL), RInst),
+    ("sra", (0b0110011, 0b101, 0b0100000, RV32I_ALU.ALU_SRA), RInst),
+    ("slt", (0b0110011, 0b010, 0b0000000, RV32I_ALU.ALU_CMP_LT), RInst),
+    ("sltu", (0b0110011, 0b011, 0b0000000, RV32I_ALU.ALU_CMP_LTU), RInst),
+    ("mul", (0b0110011, 0b000, 0b0000001, RV32I_ALU.ALU_MUL), RInst),
+    ("mulh", (0b0110011, 0b001, 0b0000001, RV32I_ALU.ALU_MULH), RInst),
+    ("mulhsu", (0b0110011, 0b010, 0b0000001, RV32I_ALU.ALU_MULHSU), RInst),
+    ("mulhu", (0b0110011, 0b011, 0b0000001, RV32I_ALU.ALU_MULHU), RInst),
+    ("div", (0b0110011, 0b100, 0b0000001, RV32I_ALU.ALU_DIV), RInst),
+    ("divu", (0b0110011, 0b101, 0b0000001, RV32I_ALU.ALU_DIVU), RInst),
+    ("rem", (0b0110011, 0b110, 0b0000001, RV32I_ALU.ALU_REM), RInst),
+    ("remu", (0b0110011, 0b111, 0b0000001, RV32I_ALU.ALU_REMU), RInst),
+    ("ebreak", (0b1110011, 0b000, RV32I_ALU.ALU_NONE, None, 0b000000000001, None), IInst),
+    ("ecall", (0b1110011, 0b000, RV32I_ALU.ALU_NONE, None, 0b000000000000, None), IInst),
     # S type (opcode, funct3, alu)
-    ('sb'   ,   (0b0100011, 0b000, RV32I_ALU.ALU_ADD), SInst),
-    ('sh'   ,   (0b0100011, 0b001, RV32I_ALU.ALU_ADD), SInst),
-    ('sw'   ,   (0b0100011, 0b010, RV32I_ALU.ALU_ADD), SInst),
-
+    ("sb", (0b0100011, 0b000, RV32I_ALU.ALU_ADD), SInst),
+    ("sh", (0b0100011, 0b001, RV32I_ALU.ALU_ADD), SInst),
+    ("sw", (0b0100011, 0b010, RV32I_ALU.ALU_ADD), SInst),
     # B type (opcode, funct3, cmp, flip)
-    ('beq'  ,   (0b1100011, 0b000, RV32I_ALU.ALU_CMP_EQ, False), BInst),
-    ('bne'  ,   (0b1100011, 0b001, RV32I_ALU.ALU_CMP_EQ, True), BInst),
-    ('blt'  ,   (0b1100011, 0b100, RV32I_ALU.ALU_CMP_LT, False), BInst),
-    ('bge'  ,   (0b1100011, 0b101, RV32I_ALU.ALU_CMP_LT, True), BInst),
-    ('bltu' ,   (0b1100011, 0b110, RV32I_ALU.ALU_CMP_LTU, False), BInst),
-    ('bgeu' ,   (0b1100011, 0b111, RV32I_ALU.ALU_CMP_LTU, True), BInst),
-
+    ("beq", (0b1100011, 0b000, RV32I_ALU.ALU_CMP_EQ, False), BInst),
+    ("bne", (0b1100011, 0b001, RV32I_ALU.ALU_CMP_EQ, True), BInst),
+    ("blt", (0b1100011, 0b100, RV32I_ALU.ALU_CMP_LT, False), BInst),
+    ("bge", (0b1100011, 0b101, RV32I_ALU.ALU_CMP_LT, True), BInst),
+    ("bltu", (0b1100011, 0b110, RV32I_ALU.ALU_CMP_LTU, False), BInst),
+    ("bgeu", (0b1100011, 0b111, RV32I_ALU.ALU_CMP_LTU, True), BInst),
 ]
 
 supported_types = [RInst, IInst, SInst, UInst, JInst, BInst]

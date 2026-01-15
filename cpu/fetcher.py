@@ -1,7 +1,8 @@
 from assassyn.frontend import *
 
-from decoder import Decoder
-from utils import Logger, FetcherLogEnabled
+from .decoder import Decoder
+from .utils import FetcherLogEnabled, Logger
+
 
 class Fetcher(Module):
     def __init__(self):
@@ -101,6 +102,4 @@ class FetcherImpl(Downstream):
             wdata=Bits(32)(0),
         )
 
-        decoder.async_called(
-            inst_valid_from_fi=should_fetch, fetch_pc_from_fi=fetch_addr
-        )
+        decoder.async_called(inst_valid_from_fi=should_fetch, fetch_pc_from_fi=fetch_addr)

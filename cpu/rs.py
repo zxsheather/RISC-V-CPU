@@ -1,8 +1,9 @@
 from assassyn.frontend import *
-from instruction import *
-from utils import *
-from lsq import LSQ_SIZE
-from rob import ROB_SIZE
+
+from .instruction import *
+from .lsq import LSQ_SIZE
+from .rob import ROB_SIZE
+from .utils import *
 
 RS_SIZE = 16
 RS_SIZE_LOG = 4
@@ -21,9 +22,7 @@ class ReservationStation(Module):
         self.name = "RS"
         self.log = Logger(enabled=RSLogEnabled)
 
-    def print_stats(
-        self, commit_counter, prediction_counter, prediction_correction_counter
-    ):
+    def print_stats(self, commit_counter, prediction_counter, prediction_correction_counter):
         stat_log = Logger(enabled=StatLogEnabled)
         stat_log(
             "\n"
@@ -189,18 +188,14 @@ class ReservationStation(Module):
         # This is the key optimization: results are computed earlier in RS
         commit_rs_idx = in_index_from_rob[0]
         new_val = read_mux(result_array_d, commit_rs_idx)
-        new_val = (rd_array[commit_rs_idx] == Bits(5)(0)).select(
-            Bits(32)(0), new_val
-        )
+        new_val = (rd_array[commit_rs_idx] == Bits(5)(0)).select(Bits(32)(0), new_val)
 
         match_mask = Bits(32)(0)
         update_index = in_index_from_rob[0]
         # Optimized logic to find the freed register
         # 1. Generate match mask in parallel
         for i in range(32):
-            is_match = reorder_busy_array_d[i][0] & (
-                reorder_array_d[i][0] == update_index
-            )
+            is_match = reorder_busy_array_d[i][0] & (reorder_array_d[i][0] == update_index)
             match_mask = match_mask | is_match.select(Bits(32)(1 << i), Bits(32)(0))
 
         # 2. Calculate flag
@@ -222,12 +217,14 @@ class ReservationStation(Module):
         # When execution units produce results, we compute the final value here
         # and store it in result_array. This allows dependent instructions to
         # get values immediately without waiting for ROB commit.
-        
+
         # Helper function to update waiting entries when a result is ready
         def broadcast_result_to_waiters(producer_idx_const, result_value):
             """Update all RS entries waiting for the producer's result"""
             for i in range(RS_SIZE):
-                with Condition(busy_array_d[i][0] & (qj_array_d[i][0] == Bits(32)(producer_idx_const))):
+                with Condition(
+                    busy_array_d[i][0] & (qj_array_d[i][0] == Bits(32)(producer_idx_const))
+                ):
                     vj_array_d[i][0] = result_value
                     qj_array_d[i][0] = Q_DEFAULT
                     self.log(
@@ -236,7 +233,9 @@ class ReservationStation(Module):
                         result_value,
                         Bits(32)(producer_idx_const),
                     )
-                with Condition(busy_array_d[i][0] & (qk_array_d[i][0] == Bits(32)(producer_idx_const))):
+                with Condition(
+                    busy_array_d[i][0] & (qk_array_d[i][0] == Bits(32)(producer_idx_const))
+                ):
                     vk_array_d[i][0] = result_value
                     qk_array_d[i][0] = Q_DEFAULT
                     self.log(
@@ -250,7 +249,9 @@ class ReservationStation(Module):
         with Condition(alu_cdb_valid[0] & ~revert_flag & rd_valid_array[alu_cdb_rob_idx[0]]):
             alu_rob_idx = alu_cdb_rob_idx[0]
             for producer_idx in range(RS_SIZE):
-                producer_match = busy_array_d[producer_idx][0] & (rob_dest_array[producer_idx] == alu_rob_idx)
+                producer_match = busy_array_d[producer_idx][0] & (
+                    rob_dest_array[producer_idx] == alu_rob_idx
+                )
                 with Condition(producer_match):
                     # Compute final result with flip (for branch comparisons)
                     final_alu_result = flip_array[producer_idx].select(
@@ -272,7 +273,9 @@ class ReservationStation(Module):
         with Condition(mul_cdb_valid[0] & ~revert_flag & rd_valid_array[mul_cdb_rob_idx[0]]):
             mul_rob_idx = mul_cdb_rob_idx[0]
             for producer_idx in range(RS_SIZE):
-                producer_match = busy_array_d[producer_idx][0] & (rob_dest_array[producer_idx] == mul_rob_idx)
+                producer_match = busy_array_d[producer_idx][0] & (
+                    rob_dest_array[producer_idx] == mul_rob_idx
+                )
                 with Condition(producer_match):
                     result_array_d[producer_idx][0] = mul_cdb_value[0]
                     result_ready_array_d[producer_idx][0] = Bits(1)(1)
@@ -287,7 +290,9 @@ class ReservationStation(Module):
         with Condition(div_cdb_valid[0] & ~revert_flag & rd_valid_array[div_cdb_rob_idx[0]]):
             div_rob_idx = div_cdb_rob_idx[0]
             for producer_idx in range(RS_SIZE):
-                producer_match = busy_array_d[producer_idx][0] & (rob_dest_array[producer_idx] == div_rob_idx)
+                producer_match = busy_array_d[producer_idx][0] & (
+                    rob_dest_array[producer_idx] == div_rob_idx
+                )
                 with Condition(producer_match):
                     result_array_d[producer_idx][0] = div_cdb_value[0]
                     result_ready_array_d[producer_idx][0] = Bits(1)(1)
@@ -302,14 +307,16 @@ class ReservationStation(Module):
         with Condition(lsq_cdb_valid[0] & ~revert_flag):
             lsq_rob_idx = lsq_cdb_rob_idx[0]
             for producer_idx in range(RS_SIZE):
-                producer_match = busy_array_d[producer_idx][0] & (rob_dest_array[producer_idx] == lsq_rob_idx)
+                producer_match = busy_array_d[producer_idx][0] & (
+                    rob_dest_array[producer_idx] == lsq_rob_idx
+                )
                 with Condition(producer_match):
                     # Sign extension logic (moved from ROB)
                     sign = mem_oper_signed_array[producer_idx]
                     size = mem_oper_size_array[producer_idx]
                     value = lsq_cdb_value[0]
                     offset = lsq_cdb_mem_addr[0][0:1]  # lowest 2 bits
-                    
+
                     # Byte sign extension
                     byte_ext_bit = sign & value[7:7]
                     byte_ext = byte_ext_bit.select(Bits(24)(0xFFFFFF), Bits(24)(0))
@@ -319,19 +326,19 @@ class ReservationStation(Module):
                         byte_val = byte_offset_flag.select(
                             concat(byte_ext, value[i << 3 : (i << 3) + 7]), byte_val
                         )
-                    
+
                     # Halfword sign extension
                     half_ext_bit = sign & value[15:15]
                     half_ext = half_ext_bit.select(Bits(16)(0xFFFF), Bits(16)(0))
                     half_val = offset[0:0].select(
                         concat(half_ext, value[0:15]), concat(half_ext, value[16:31])
                     )
-                    
+
                     # Select final value based on size
                     final_load_result = (size == Bits(2)(0)).select(
                         byte_val, (size == Bits(2)(1)).select(half_val, value)
                     )
-                    
+
                     result_array_d[producer_idx][0] = final_load_result
                     result_ready_array_d[producer_idx][0] = Bits(1)(1)
                     self.log(
@@ -360,8 +367,7 @@ class ReservationStation(Module):
             update_index = in_index_from_rob[0].bitcast(Bits(5))
             newly_append_ind = newly_append_index[0].bitcast(Bits(RS_SIZE_LOG))
             with Condition(
-                ~revert_flag
-                & (newly_append_ind != update_index.bitcast(Bits(RS_SIZE_LOG)))
+                ~revert_flag & (newly_append_ind != update_index.bitcast(Bits(RS_SIZE_LOG)))
             ):
                 write_1hot(busy_array_d, update_index, Bits(1)(0))
             self.log(
@@ -373,9 +379,7 @@ class ReservationStation(Module):
                 self.log(
                     "EBREAK instruction committed, finish simulation",
                 )
-                self.print_stats(
-                    commit_counter, prediction_counter, prediction_correction_counter
-                )
+                self.print_stats(commit_counter, prediction_counter, prediction_correction_counter)
                 log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
@@ -383,9 +387,7 @@ class ReservationStation(Module):
                 self.log(
                     "ECALL instruction committed, finish simulation",
                 )
-                self.print_stats(
-                    commit_counter, prediction_counter, prediction_correction_counter
-                )
+                self.print_stats(commit_counter, prediction_counter, prediction_correction_counter)
                 log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
@@ -410,9 +412,7 @@ class ReservationStation(Module):
                 self.log(
                     "Main program executed LI x10 255, finish simulation",
                 )
-                self.print_stats(
-                    commit_counter, prediction_counter, prediction_correction_counter
-                )
+                self.print_stats(commit_counter, prediction_counter, prediction_correction_counter)
                 log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
@@ -420,17 +420,13 @@ class ReservationStation(Module):
                 self.log(
                     "Main program executed SB x0 -1, finish simulation",
                 )
-                self.print_stats(
-                    commit_counter, prediction_counter, prediction_correction_counter
-                )
+                self.print_stats(commit_counter, prediction_counter, prediction_correction_counter)
                 log("{}", reg_file[10].bitcast(UInt(32)))
                 finish()
 
             with Condition(need_update_from_rob[0]):
                 for i in range(RS_SIZE):
-                    with Condition(
-                        busy_array_d[i][0] & (qj_array_d[i][0] == update_index)
-                    ):
+                    with Condition(busy_array_d[i][0] & (qj_array_d[i][0] == update_index)):
                         vj_array_d[i][0] = new_val
                         qj_array_d[i][0] = Q_DEFAULT
                         self.log(
@@ -439,9 +435,7 @@ class ReservationStation(Module):
                             new_val,
                             update_index,
                         )
-                    with Condition(
-                        busy_array_d[i][0] & (qk_array_d[i][0] == update_index)
-                    ):
+                    with Condition(busy_array_d[i][0] & (qk_array_d[i][0] == update_index)):
                         vk_array_d[i][0] = new_val
                         qk_array_d[i][0] = Q_DEFAULT
                         self.log(
@@ -478,13 +472,13 @@ class ReservationStation(Module):
         # Append new entry
         with Condition(has_entry_from_d & ~revert_flag):
             newly_append_ind = newly_append_index[0].bitcast(Bits(RS_SIZE_LOG))
-            newly_append_index[0] = (
-                newly_append_index[0].bitcast(Int(32)) + Int(32)(1)
-            ) & Int(32)(RS_SIZE - 1)
+            newly_append_index[0] = (newly_append_index[0].bitcast(Int(32)) + Int(32)(1)) & Int(32)(
+                RS_SIZE - 1
+            )
             self.log("New RS entry allocated at index {}", newly_append_ind)
-            pos_in_rob[0] = (pos_in_rob[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
-                Bits(32)
-            ) & Bits(32)(ROB_SIZE - 1)
+            pos_in_rob[0] = (pos_in_rob[0].bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32)) & Bits(
+                32
+            )(ROB_SIZE - 1)
             write_1hot(busy_array_d, newly_append_ind, Bits(1)(1))
             pc_array[newly_append_ind] = pc_from_d
             alu_array[newly_append_ind] = alu_from_d
@@ -518,35 +512,41 @@ class ReservationStation(Module):
                 jal_result = (pc_from_d.bitcast(Int(32)) + Int(32)(4)).bitcast(Bits(32))
                 write_1hot(result_array_d, newly_append_ind, jal_result)
                 write_1hot(result_ready_array_d, newly_append_ind, Bits(1)(1))
-                self.log("RS {}: JAL/JALR result pre-computed = 0x{:08x}", newly_append_ind, jal_result)
-            
+                self.log(
+                    "RS {}: JAL/JALR result pre-computed = 0x{:08x}", newly_append_ind, jal_result
+                )
+
             with Condition(signals.is_auipc):
                 # auipc: result = pc + imm
-                auipc_result = (pc_from_d.bitcast(Int(32)) + imm_from_d.bitcast(Int(32))).bitcast(Bits(32))
+                auipc_result = (pc_from_d.bitcast(Int(32)) + imm_from_d.bitcast(Int(32))).bitcast(
+                    Bits(32)
+                )
                 write_1hot(result_array_d, newly_append_ind, auipc_result)
                 write_1hot(result_ready_array_d, newly_append_ind, Bits(1)(1))
-                self.log("RS {}: AUIPC result pre-computed = 0x{:08x}", newly_append_ind, auipc_result)
-            
+                self.log(
+                    "RS {}: AUIPC result pre-computed = 0x{:08x}", newly_append_ind, auipc_result
+                )
+
             with Condition(signals.is_lui):
                 # lui: result = imm
                 write_1hot(result_array_d, newly_append_ind, imm_from_d)
                 write_1hot(result_ready_array_d, newly_append_ind, Bits(1)(1))
                 self.log("RS {}: LUI result pre-computed = 0x{:08x}", newly_append_ind, imm_from_d)
-            
+
             # For other instructions (ALU, MUL, DIV, Load), result will be computed
             # when execution units return results
-            with Condition(~signals.is_jal & ~signals.is_jalr & ~signals.is_auipc & ~signals.is_lui):
+            with Condition(
+                ~signals.is_jal & ~signals.is_jalr & ~signals.is_auipc & ~signals.is_lui
+            ):
                 write_1hot(result_ready_array_d, newly_append_ind, Bits(1)(0))
 
             with Condition(memory_from_d[0:0] == Bits(1)(1)):  # Load
                 lsq_poses_array[newly_append_ind] = lsq_pos[0]
-                lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
-                    Bits(32)
-                )
+                lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32))
                 lq_poses_array[newly_append_ind] = lq_pos[0]
-                lq_pos[0] = (lq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
-                    Bits(32)
-                ) & Bits(32)(LSQ_SIZE - 1)
+                lq_pos[0] = (lq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32)) & Bits(32)(
+                    LSQ_SIZE - 1
+                )
                 self.log(
                     "RS entry index {} assigned LSQ load position {}, LQ position {}",
                     newly_append_ind,
@@ -556,13 +556,11 @@ class ReservationStation(Module):
 
             with Condition(memory_from_d[1:1] == Bits(1)(1)):  # Store
                 lsq_poses_array[newly_append_ind] = lsq_pos[0]
-                lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
-                    Bits(32)
-                )
+                lsq_pos[0] = (lsq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32))
                 sq_poses_array[newly_append_ind] = sq_pos[0]
-                sq_pos[0] = (sq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(
-                    Bits(32)
-                ) & Bits(32)(LSQ_SIZE - 1)
+                sq_pos[0] = (sq_pos[0].bitcast(Int(32)) + Int(32)(1)).bitcast(Bits(32)) & Bits(32)(
+                    LSQ_SIZE - 1
+                )
                 self.log(
                     "RS entry index {} assigned LSQ store position {}, SQ position {}",
                     newly_append_ind,
@@ -576,7 +574,7 @@ class ReservationStation(Module):
                 producer_busy = read_mux(reorder_busy_array_d, rs1_from_d)
                 producer_result_ready = read_mux(result_ready_array_d, producer_rs_idx)
                 producer_result = read_mux(result_array_d, producer_rs_idx)
-                
+
                 # Case 1: Producer exists and result is already ready - use it directly
                 with Condition(
                     producer_busy
@@ -593,7 +591,7 @@ class ReservationStation(Module):
                         producer_result,
                         producer_rs_idx,
                     )
-                
+
                 # Case 2: Producer exists but result not ready - wait for it
                 with Condition(
                     producer_busy
@@ -613,7 +611,7 @@ class ReservationStation(Module):
                         rs1_from_d,
                         producer_rs_idx,
                     )
-                    
+
                 # Case 3: Value being freed this cycle from ROB commit
                 with Condition(newly_freed_flag & (newly_freed_rd == rs1_from_d)):
                     write_1hot(vj_array_d, newly_append_ind, new_val)
@@ -624,7 +622,7 @@ class ReservationStation(Module):
                         rs1_from_d,
                         new_val,
                     )
-                    
+
                 # Case 4: No producer - read from register file
                 with Condition(
                     ~producer_busy
@@ -639,7 +637,7 @@ class ReservationStation(Module):
                         rs1_from_d,
                         reg_file[rs1_from_d],
                     )
-                    
+
                 # Case 5: x0 is always 0
                 with Condition(rs1_from_d == Bits(5)(0)):
                     write_1hot(vj_array_d, newly_append_ind, Bits(32)(0))
@@ -664,7 +662,7 @@ class ReservationStation(Module):
                 producer_busy_k = read_mux(reorder_busy_array_d, rs2_from_d)
                 producer_result_ready_k = read_mux(result_ready_array_d, producer_rs_idx_k)
                 producer_result_k = read_mux(result_array_d, producer_rs_idx_k)
-                
+
                 # Case 1: Producer exists and result is already ready - use it directly
                 with Condition(
                     producer_busy_k
@@ -681,7 +679,7 @@ class ReservationStation(Module):
                         producer_result_k,
                         producer_rs_idx_k,
                     )
-                
+
                 # Case 2: Producer exists but result not ready - wait for it
                 with Condition(
                     producer_busy_k
@@ -701,12 +699,10 @@ class ReservationStation(Module):
                         rs2_from_d,
                         producer_rs_idx_k,
                     )
-                    
+
                 # Case 3: Value being freed this cycle from ROB commit
                 with Condition(
-                    newly_freed_flag
-                    & (newly_freed_rd == rs2_from_d)
-                    & (rs2_from_d != Bits(5)(0))
+                    newly_freed_flag & (newly_freed_rd == rs2_from_d) & (rs2_from_d != Bits(5)(0))
                 ):
                     write_1hot(vk_array_d, newly_append_ind, new_val)
                     write_1hot(qk_array_d, newly_append_ind, Q_DEFAULT)
@@ -716,7 +712,7 @@ class ReservationStation(Module):
                         rs2_from_d,
                         new_val,
                     )
-                    
+
                 # Case 4: No producer - read from register file
                 with Condition(
                     ~producer_busy_k
@@ -752,9 +748,7 @@ class ReservationStation(Module):
 
             with Condition(rd_valid_from_d):
                 rd_valid_array[newly_append_ind] = Bits(1)(1)
-                write_1hot(
-                    reorder_array_d, rd_from_d, newly_append_ind.bitcast(Bits(32))
-                )
+                write_1hot(reorder_array_d, rd_from_d, newly_append_ind.bitcast(Bits(32)))
                 write_1hot(reorder_busy_array_d, rd_from_d, Bits(1)(1))
                 self.log(
                     "Reorder array updated: x{:02} -> RS entry {}",
@@ -774,9 +768,7 @@ class ReservationStation(Module):
 
         reuse_rd_flag = (rd_from_d == newly_freed_rd).select(Bits(1)(1), Bits(1)(0))
         reuse_rd_flag = rd_valid_from_d.select(reuse_rd_flag, Bits(1)(0))
-        reuse_rd_flag = (has_entry_from_d & ~revert_flag).select(
-            reuse_rd_flag, Bits(1)(0)
-        )
+        reuse_rd_flag = (has_entry_from_d & ~revert_flag).select(reuse_rd_flag, Bits(1)(0))
         with Condition(reuse_rd_flag):
             self.log(
                 "New entry rd x{:02} reuses freed rd from ROB entry {}",
@@ -785,10 +777,7 @@ class ReservationStation(Module):
             )
 
         with Condition(
-            ~reuse_rd_flag
-            & newly_freed_flag
-            & ~revert_flag
-            & (rd_from_d != newly_freed_rd)
+            ~reuse_rd_flag & newly_freed_flag & ~revert_flag & (rd_from_d != newly_freed_rd)
         ):
             write_1hot(reorder_array_d, newly_freed_rd, Bits(32)(0))
             write_1hot(reorder_busy_array_d, newly_freed_rd, Bits(1)(0))
@@ -813,9 +802,7 @@ class ReservationStation(Module):
             )
             ready_indices.append(Bits(RS_SIZE_LOG)(i))
 
-        dispatch_valid, dispatch_index = priority_select_tree(
-            ready_flags, ready_indices
-        )
+        dispatch_valid, dispatch_index = priority_select_tree(ready_flags, ready_indices)
 
         dispatch_valid = dispatch_valid & ~revert_flag
         with Condition(dispatch_valid):

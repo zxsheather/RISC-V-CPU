@@ -1,30 +1,58 @@
-from dataclasses import dataclass
-import re
-from unit_tests.tests import *
+"""
+RISC-V 乱序执行 CPU
+
+使用方法:
+    python main.py                          # 运行所有 workload 测试
+    python main.py --playground-build       # 编译 playground 仿真器
+    python main.py --playground-run         # 运行 playground 仿真器
+    python main.py --init-file <file>       # 使用指定的 init 文件运行
+    python main.py --workload <name>        # 运行指定的 workload
+"""
+
 import argparse
-from lsq import LSQ
-from rob import ROB
-from alu import ALU
-from rs import ReservationStation
-from decoder import Decoder
-from fetcher import Fetcher, FetcherImpl
-from assassyn.frontend import *
-from assassyn.backend import *
-from assassyn import utils
 import os
-import sys
+import re
 import struct
 import subprocess
-from contextlib import redirect_stdout, redirect_stderr
-from bpu import *
-from multiplier import BoothEncoder, CompressStage1, CompressStage2, FinalAdder
-from divider import DivStage1, DivStage2, DivStage3, DivStage4
+import sys
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
+
+from assassyn import utils
+from assassyn.backend import *
+from assassyn.frontend import *
+
+# CPU 模块导入
+from cpu import (
+    ALU,
+    LSQ,
+    ROB,
+    AlwaysFalseBPU,
+    AlwaysTakenBPU,
+    BoothEncoder,
+    CompressStage1,
+    CompressStage2,
+    Decoder,
+    DivStage1,
+    DivStage2,
+    DivStage3,
+    DivStage4,
+    Fetcher,
+    FetcherImpl,
+    FinalAdder,
+    GlobalHistoryBPU,
+    ReservationStation,
+    TageBPU,
+    TournamentBPU,
+    TwoBitBPU,
+)
+
+# 测试用例导入
+from unit_tests.tests import *
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 workspace = f"{current_path}/.workspace/"
 os.makedirs(workspace, exist_ok=True)
-
-sys.path.insert(0, current_path)
 
 
 def _append_env_flag(env_key: str, flag: str) -> None:
@@ -209,7 +237,7 @@ def parse_stats_from_log(log_path: str) -> dict:
         "committed_instructions": 0,
         "total_branches": 0,
         "correctly_predicted_branches": 0,
-        "accuracy": 0.0
+        "accuracy": 0.0,
     }
 
     if not os.path.exists(log_path):
@@ -231,8 +259,7 @@ def parse_stats_from_log(log_path: str) -> dict:
         stats["correctly_predicted_branches"] = int(m.group(1))
 
     if stats["total_branches"] > 0:
-        stats["accuracy"] = stats["correctly_predicted_branches"] / \
-            stats["total_branches"]
+        stats["accuracy"] = stats["correctly_predicted_branches"] / stats["total_branches"]
 
     return stats
 
@@ -268,8 +295,7 @@ def build_simulator(
         prediction_counter = RegArray(Int(32), 1)
         prediction_correction_counter = RegArray(Int(32), 1)
 
-        icache = SRAM(width=32, depth=1 << depth_log,
-                      init_file=icache_init_file)
+        icache = SRAM(width=32, depth=1 << depth_log, init_file=icache_init_file)
         icache.name = "icache"
 
         ifetch_continue_flag = RegArray(Bits(1), 1, initializer=[1])
@@ -324,8 +350,7 @@ def build_simulator(
         lsq_bypass_sq_pos_to_rs = RegArray(Bits(32), 1)
         lsq_bypass_valid_to_rs = RegArray(Bits(1), 1)
 
-        dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG,
-                      init_file=dcache_init_file)
+        dcache = SRAM(width=32, depth=1 << DCACHE_DEPTH_LOG, init_file=dcache_init_file)
         dcache.name = "dcache"
 
         lsb_out_valid_to_rob = RegArray(Bits(1), 1)
@@ -346,7 +371,7 @@ def build_simulator(
             valid_to_rs=lsq_bypass_valid_to_rs,
             update_sq_pos_to_rs=lsq_bypass_sq_pos_to_rs,
             mem_addr_to_rob=lsq_mem_addr_to_rob,
-            dout=dcache.dout
+            dout=dcache.dout,
         )
 
         bpu_predicted_pc = RegArray(Bits(32), 1)
@@ -382,7 +407,7 @@ def build_simulator(
             div_rob_index_from_div=div_index_to_rob,
             commit_counter=commit_counter,
             prediction_counter=prediction_counter,
-            prediction_correction_counter=prediction_correction_counter
+            prediction_correction_counter=prediction_correction_counter,
         )
 
         rs = ReservationStation()
@@ -516,9 +541,7 @@ def run_simulator(
         log_file_path = f"{workspace}/simulation.log"
 
     print("\n正在运行仿真...")
-    result = subprocess.run(
-        [simulator_binary], capture_output=True, text=True, timeout=timeout_s
-    )
+    result = subprocess.run([simulator_binary], capture_output=True, text=True, timeout=timeout_s)
 
     with open(log_file_path, "w") as f:
         if result.stdout:
@@ -673,10 +696,12 @@ def run_all_workloads(
             with open(stat_file, "w") as f:
                 # 写入 CSV 头
                 f.write(
-                    "workload,cycles,committed_instructions,total_branches,correctly_predicted_branches,accuracy\n")
+                    "workload,cycles,committed_instructions,total_branches,correctly_predicted_branches,accuracy\n"
+                )
                 for s in all_stats:
                     f.write(
-                        f"{s['name']},{s['cycles']},{s['committed_instructions']},{s['total_branches']},{s['correctly_predicted_branches']},{s['accuracy']:.4f}\n")
+                        f"{s['name']},{s['cycles']},{s['committed_instructions']},{s['total_branches']},{s['correctly_predicted_branches']},{s['accuracy']:.4f}\n"
+                    )
             print(f"\n✓ 统计信息已写入: {stat_file}")
         except Exception as e:
             print(f"\n✗ 写入统计文件失败: {e}")
@@ -734,9 +759,7 @@ def run_single_init_file(
 
     print("=" * 70)
     print(f"单一 init 文件: {init_file}")
-    print(
-        f"分支预测: {bpu_kind} 最大周期数: {max_cycles} 跳过 Verilator: {skip_verilator}"
-    )
+    print(f"分支预测: {bpu_kind} 最大周期数: {max_cycles} 跳过 Verilator: {skip_verilator}")
     print("=" * 70)
 
     log_file = f"{workspace}/simulation.log"
@@ -759,7 +782,126 @@ def run_single_init_file(
         try:
             value = parse_last_rs_value_from_log(log_file)
             cycles = parse_last_cycle_from_log(log_file)
-            print(f"✓ 仿真完成: got={value} cycles={cycles}")
+            ret_code = value & 0xFF
+            print(f"✓ 仿真完成: got={value} (ret={ret_code}) cycles={cycles}")
+        except Exception as e:
+            print(f"✓ 仿真完成（结果解析失败: {e}）")
+    else:
+        print("✗ 仿真返回非 0")
+
+    return 0 if ok else 1
+
+
+# ============== Playground 模式 ==============
+# 使用固定的 playground 文件夹，编译一次后可多次运行
+# 支持 playground.data (hex字节格式) 自动转换为 playground.txt
+
+PLAYGROUND_DIR = os.path.join(current_path, "playground")
+PLAYGROUND_DATA = os.path.join(PLAYGROUND_DIR, "playground.data")
+PLAYGROUND_FILE = os.path.join(PLAYGROUND_DIR, "playground.txt")
+PLAYGROUND_SIMULATOR = f"{workspace}/playground_simulator"
+
+
+def _convert_playground_data_to_txt():
+    """将 playground.data 转换为 playground.txt（如果 .data 更新）"""
+    from scripts.parse_hex import merge_hex_bytes
+
+    if not os.path.exists(PLAYGROUND_DATA):
+        return False
+
+    # 检查是否需要转换（.data 比 .txt 新，或 .txt 不存在）
+    need_convert = not os.path.exists(PLAYGROUND_FILE)
+    if not need_convert:
+        data_mtime = os.path.getmtime(PLAYGROUND_DATA)
+        txt_mtime = os.path.getmtime(PLAYGROUND_FILE)
+        need_convert = data_mtime > txt_mtime
+
+    if need_convert:
+        print(f"转换 {PLAYGROUND_DATA} -> {PLAYGROUND_FILE}")
+        merge_hex_bytes(PLAYGROUND_DATA, PLAYGROUND_FILE)
+        return True
+    return False
+
+
+def playground_build(
+    *,
+    max_cycles: int,
+    bpu_kind: str,
+) -> str:
+    """编译 playground 仿真器（使用固定的 playground.txt 路径）"""
+    print("=" * 70)
+    print("Playground 模式: 编译仿真器")
+    print(f"Init 文件: {PLAYGROUND_FILE}")
+    print(f"分支预测: {bpu_kind} 最大周期数: {max_cycles}")
+    print("=" * 70)
+
+    # 确保 playground 目录存在
+    os.makedirs(PLAYGROUND_DIR, exist_ok=True)
+
+    # 尝试从 .data 转换
+    _convert_playground_data_to_txt()
+
+    # 确保 playground.txt 存在
+    if not os.path.exists(PLAYGROUND_FILE):
+        print(f"创建空的 playground.txt...")
+        with open(PLAYGROUND_FILE, "w") as f:
+            f.write("@0\n00000013\n")  # NOP 指令
+
+    simulator_binary, _ = build_simulator(
+        max_cycles=max_cycles,
+        icache_init_file=PLAYGROUND_FILE,
+        dcache_init_file=PLAYGROUND_FILE,
+        bpu_kind=bpu_kind,
+        generate_verilog=False,
+    )
+
+    # 复制到固定位置，方便后续直接运行
+    import shutil
+
+    os.makedirs(os.path.dirname(PLAYGROUND_SIMULATOR), exist_ok=True)
+    shutil.copy2(simulator_binary, PLAYGROUND_SIMULATOR)
+    print(f"\n✓ Playground 仿真器已保存至: {PLAYGROUND_SIMULATOR}")
+    print(f"  现在可以修改 {PLAYGROUND_DATA} 或 {PLAYGROUND_FILE} 后直接运行:")
+    print(f"  python main.py --playground-run")
+
+    return PLAYGROUND_SIMULATOR
+
+
+def playground_run() -> int:
+    """直接运行已编译的 playground 仿真器（无需重新编译）"""
+    if not os.path.exists(PLAYGROUND_SIMULATOR):
+        print(f"✗ 错误: 找不到 playground 仿真器 {PLAYGROUND_SIMULATOR}")
+        print(f"  请先运行: python main.py --playground-build")
+        return 1
+
+    # 自动转换 .data -> .txt（如果 .data 更新了）
+    converted = _convert_playground_data_to_txt()
+    if converted:
+        print("✓ 已自动转换 playground.data -> playground.txt")
+
+    if not os.path.exists(PLAYGROUND_FILE):
+        print(f"✗ 错误: 找不到 playground 文件 {PLAYGROUND_FILE}")
+        return 1
+
+    print("=" * 70)
+    print("Playground 模式: 运行仿真")
+    print(f"Init 文件: {PLAYGROUND_FILE}")
+    print("=" * 70)
+
+    log_file = f"{workspace}/playground.log"
+    ok = run_simulator(
+        PLAYGROUND_SIMULATOR,
+        log_file_path=log_file,
+        verilog_path=None,
+        run_verilog=False,
+    )
+
+    if ok:
+        try:
+            value = parse_last_rs_value_from_log(log_file)
+            cycles = parse_last_cycle_from_log(log_file)
+            ret_code = value & 0xFF
+            print(f"✓ 仿真完成: got={value} (ret={ret_code}) cycles={cycles}")
         except Exception as e:
             print(f"✓ 仿真完成（结果解析失败: {e}）")
     else:
@@ -784,9 +926,7 @@ def load_workload_file(filename):
     elif not filename.endswith(".txt"):
         # 格式: folder (不含扩展名) - 自动查找 folder/folder.txt
         folder_name = filename
-        workload_path = os.path.join(
-            current_path, "workload", folder_name, f"{folder_name}.txt"
-        )
+        workload_path = os.path.join(current_path, "workload", folder_name, f"{folder_name}.txt")
     else:
         # 格式: file.txt
         workload_path = os.path.join(current_path, "workload", filename)
@@ -861,8 +1001,7 @@ def main():
     )
     parser.add_argument(
         "--predictor",
-        choices=["tournament", "global", "two_bit",
-                 "always_false", "always_true", "tage"],
+        choices=["tournament", "global", "two_bit", "always_false", "always_true", "tage"],
         default="global",
         help="Choose branch predictor",
     )
@@ -877,12 +1016,32 @@ def main():
         help="Use a single init file (hex/word-per-line) for both icache and dcache; run simulator/Verilator once without ans check.",
     )
     parser.add_argument(
+        "--playground-build",
+        action="store_true",
+        help="编译 playground 仿真器（使用 playground.txt 作为 init 文件）",
+    )
+    parser.add_argument(
+        "--playground-run",
+        action="store_true",
+        help="运行已编译的 playground 仿真器（无需重新编译，直接读取 playground.txt）",
+    )
+    parser.add_argument(
         "--stat",
         nargs="?",
         const=".workspace/stats.csv",
         help="Output statistics to a CSV file (default: .workspace/stats.csv). Implies --all-workloads.",
     )
     args = parser.parse_args()
+
+    # Playground 模式优先处理
+    if args.playground_build:
+        if args.max_cycles is None:
+            args.max_cycles = 1000000
+        playground_build(max_cycles=args.max_cycles, bpu_kind=args.predictor)
+        sys.exit(0)
+
+    if args.playground_run:
+        sys.exit(playground_run())
 
     # 如果指定了 --stat，隐含 --all-workloads
     if args.stat is not None:
@@ -968,9 +1127,7 @@ def main():
     # 2. 构建并运行
     print(f"\n[步骤 2] 构建并运行仿真 (最大周期数: {args.max_cycles})")
     success, verilog_path = build_and_run(
-        max_cycles=args.max_cycles,
-        run_verilog=not args.skip_verilator,
-        bpu_kind=args.predictor
+        max_cycles=args.max_cycles, run_verilog=not args.skip_verilator, bpu_kind=args.predictor
     )
 
     if success:

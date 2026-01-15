@@ -12,13 +12,13 @@ Pipeline structure (4 cycles total):
   - Stage 4: Final addition
 """
 
-from assassyn.frontend import *
-from assassyn.backend import elaborate
-from assassyn import utils
 import assassyn
+from assassyn import utils
+from assassyn.backend import elaborate
+from assassyn.frontend import *
 
-from instruction import *
-from utils import Logger, MulLogEnabled
+from .instruction import *
+from .utils import Logger, MulLogEnabled
 
 
 class BoothEncoder(Module):
@@ -57,10 +57,10 @@ class BoothEncoder(Module):
         b_u = b.bitcast(UInt(32))
 
         # Determine signedness
-        is_mul = alu[RV32I_ALU.ALU_MUL:RV32I_ALU.ALU_MUL]
-        is_mulh = alu[RV32I_ALU.ALU_MULH:RV32I_ALU.ALU_MULH]
-        is_mulhsu = alu[RV32I_ALU.ALU_MULHSU:RV32I_ALU.ALU_MULHSU]
-        is_mulhu = alu[RV32I_ALU.ALU_MULHU:RV32I_ALU.ALU_MULHU]
+        is_mul = alu[RV32I_ALU.ALU_MUL : RV32I_ALU.ALU_MUL]
+        is_mulh = alu[RV32I_ALU.ALU_MULH : RV32I_ALU.ALU_MULH]
+        is_mulhsu = alu[RV32I_ALU.ALU_MULHSU : RV32I_ALU.ALU_MULHSU]
+        is_mulhu = alu[RV32I_ALU.ALU_MULHU : RV32I_ALU.ALU_MULHU]
 
         is_a_signed = is_mul | is_mulh | is_mulhsu
         is_b_signed = is_mul | is_mulh
@@ -87,9 +87,7 @@ class BoothEncoder(Module):
         # Correction for unsigned B
         # If B is unsigned and B[31] is 1, we need to add A << 32
         needs_correction = (~is_b_signed) & b_sign
-        correction = needs_correction.select(
-            (a_64 << Bits(6)(32)).bitcast(Int(64)), Int(64)(0)
-        )
+        correction = needs_correction.select((a_64 << Bits(6)(32)).bitcast(Int(64)), Int(64)(0))
 
         # Generate 16 partial products
         pp_list = []
@@ -256,9 +254,7 @@ class CompressStage2(Module):
 
     @module.combinational
     def build(self, stage4: "FinalAdder"):
-        s0, s1, s2, s3, s4, s5, s6, s7, alu, tag, correction, valid = (
-            self.pop_all_ports(True)
-        )
+        s0, s1, s2, s3, s4, s5, s6, s7, alu, tag, correction, valid = self.pop_all_ports(True)
 
         t0 = s0 + s1
         t1 = s2 + s3
@@ -268,9 +264,7 @@ class CompressStage2(Module):
         u0 = t0 + t1
         u1 = t2 + t3
 
-        stage4.async_called(
-            u0=u0, u1=u1, alu=alu, tag=tag, correction=correction, valid=valid
-        )
+        stage4.async_called(u0=u0, u1=u1, alu=alu, tag=tag, correction=correction, valid=valid)
 
 
 class FinalAdder(Module):
@@ -311,7 +305,7 @@ class FinalAdder(Module):
         res_hi = raw_result[32:63].bitcast(Bits(32))
 
         # Select result based on ALU opcode
-        is_mul = alu[RV32I_ALU.ALU_MUL:RV32I_ALU.ALU_MUL]
+        is_mul = alu[RV32I_ALU.ALU_MUL : RV32I_ALU.ALU_MUL]
 
         final_val = is_mul.select(res_lo, res_hi)
 
@@ -320,4 +314,6 @@ class FinalAdder(Module):
         valid_out[0] = valid
 
         with Condition(valid):
-            self.log("Result: tag={}, val=0x{:08x}, valid={}, is_mul={}", tag, final_val, valid, is_mul)
+            self.log(
+                "Result: tag={}, val=0x{:08x}, valid={}, is_mul={}", tag, final_val, valid, is_mul
+            )

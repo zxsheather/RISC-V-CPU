@@ -1,6 +1,7 @@
 from assassyn.frontend import *
-from instruction import *
-from utils import *
+
+from .instruction import *
+from .utils import *
 
 ROB_SIZE = 16
 ROB_SIZE_LOG = 4
@@ -64,7 +65,7 @@ class ROB(Module):
         # ROB table - simplified, no longer stores values
         busy_array_d = [RegArray(Bits(1), 1) for _ in range(ROB_SIZE)]
         ready_array_d = [RegArray(Bits(1), 1) for _ in range(ROB_SIZE)]
-        
+
         # Only keep necessary fields
         memory_from_rs_array = RegArray(Bits(2), ROB_SIZE)
         rs1_val_array = RegArray(Bits(32), ROB_SIZE)
@@ -75,7 +76,9 @@ class ROB(Module):
         is_jalr_from_rs_array = RegArray(Bits(1), ROB_SIZE)
         is_branch_from_rs_array = RegArray(Bits(1), ROB_SIZE)
         sq_pos_from_rs_array = RegArray(Bits(32), ROB_SIZE)
-        result_array_d = [RegArray(Bits(32), 1) for _ in range(ROB_SIZE)]  # Store result from RS or execution units
+        result_array_d = [
+            RegArray(Bits(32), 1) for _ in range(ROB_SIZE)
+        ]  # Store result from RS or execution units
         flip_array = RegArray(Bits(1), ROB_SIZE)  # Flip flag for branch comparison
 
         (
@@ -112,10 +115,7 @@ class ROB(Module):
                 is_branch_from_rs_array[head] | is_jalr_from_rs_array[head]
             )
             revert_flag = commit_flag & (
-                (
-                    is_branch_from_rs_array[head]
-                    & (head_result[0:0] ^ jump_array[head][0:0])
-                )
+                (is_branch_from_rs_array[head] & (head_result[0:0] ^ jump_array[head][0:0]))
                 | is_jalr_from_rs_array[head]
             )
             revert_flag_cdb[0] = revert_flag
@@ -124,7 +124,7 @@ class ROB(Module):
             )
             commit_branch_to_bpu[0] = commit_flag & is_branch_from_rs_array[head]
             pc_addr_to_bpu[0] = pc_array[head]
-            
+
             with Condition(commit_flag):
                 self.log(
                     "Committing entry rob_idx={}, rs_idx={}, pc=0x{:08x}",
@@ -134,7 +134,7 @@ class ROB(Module):
                 )
                 commit_counter[0] = commit_counter[0] + Int(32)(1)
                 index_to_rs[0] = ind_array[head]
-                
+
                 with Condition(~revert_flag):
                     write_1hot(busy_array_d, head, Bits(1)(0))
                     pos[0] = (head.bitcast(UInt(32)) + UInt(32)(1)) & Bits(32)(ROB_SIZE - 1)
@@ -144,8 +144,7 @@ class ROB(Module):
                 with Condition(is_jalr_from_rs_array[head]):
                     updated_pc_to_if[0] = (
                         (
-                            rs1_val_array[head].bitcast(Int(32))
-                            + imm_array[head].bitcast(Int(32))
+                            rs1_val_array[head].bitcast(Int(32)) + imm_array[head].bitcast(Int(32))
                         ).bitcast(Bits(32))
                     ) & Bits(32)(0xFFFFFFFE)
 
@@ -163,8 +162,7 @@ class ROB(Module):
 
                     with Condition(head_result[0:0]):
                         updated_pc_to_if[0] = (
-                            pc_array[head].bitcast(Int(32))
-                            + imm_array[head].bitcast(Int(32))
+                            pc_array[head].bitcast(Int(32)) + imm_array[head].bitcast(Int(32))
                         ).bitcast(Bits(32))
                         actual_taken_to_bpu[0] = Bits(1)(1)
 
@@ -175,7 +173,9 @@ class ROB(Module):
                         actual_taken_to_bpu[0] = Bits(1)(0)
 
                     with Condition(predict_result):
-                        prediction_correction_counter[0] = prediction_correction_counter[0] + Int(32)(1)
+                        prediction_correction_counter[0] = prediction_correction_counter[0] + Int(
+                            32
+                        )(1)
 
                 out_valid_to_rs[0] = Bits(1)(1)
 
@@ -214,7 +214,9 @@ class ROB(Module):
 
             # receive from LSQ - mark ready and update result
             with Condition(in_valid_from_lsq[0] & ~revert_flag):
-                lsq_idx = (rob_dest_from_lsq[0] & Bits(32)(ROB_SIZE - 1)).bitcast(Bits(ROB_SIZE_LOG))
+                lsq_idx = (rob_dest_from_lsq[0] & Bits(32)(ROB_SIZE - 1)).bitcast(
+                    Bits(ROB_SIZE_LOG)
+                )
                 write_1hot(ready_array_d, lsq_idx, Bits(1)(1))
                 write_1hot(result_array_d, lsq_idx, lsq_value_from_lsq[0])
 
