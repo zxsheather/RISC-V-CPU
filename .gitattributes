@@ -1,2 +1,7 @@
-unit_tests/* linguist-vendored
-workload/* linguist-vendored
+# Exclude test files and workload from GitHub language statistics
+unit_tests/** linguist-vendored
+workload/** linguist-vendored
+
+# Also mark compilation scripts and test files specifically
+*.asm linguist-vendored
+*.ans linguist-vendored
