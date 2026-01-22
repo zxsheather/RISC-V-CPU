@@ -10,7 +10,7 @@ The CPU consists of the following main stages and components:
 2.  **Instruction Decode (Decoder)**
 3.  **Reservation Station (RS)**
 4.  **Reorder Buffer (ROB)**
-5.  **Execution Units (ALU, LSQ)**
+5.  **Execution Units (ALU, LSQ, Multiplier, Divider)**
 6.  **Branch Prediction Unit (BPU)**
 
 ## Component Details
@@ -34,14 +34,14 @@ The Decoder processes the 32-bit RISC-V instructions fetched by the Fetcher.
 
 ### 3. Reservation Station (RS) (`rs.py`)
 The Reservation Station manages the scheduling of instructions.
--   **Capacity**: `RS_SIZE` (default 32) entries.
+-   **Capacity**: `RS_SIZE` (default 16) entries.
 -   **Register Renaming**: Renames architectural registers to ROB entries to handle data dependencies (RAW, WAW, WAR).
 -   **Operand Tracking**: Tracks the availability of source operands. If an operand is not available (produced by an in-flight instruction), the RS listens to the Common Data Bus (CDB) / ROB updates to capture the value when it becomes available.
 -   **Dispatch**: When all operands for an instruction are ready, the RS dispatches the instruction to the appropriate execution unit (ALU or LSQ) for execution and ROB for commit tracking.
 
 ### 4. Reorder Buffer (ROB) (`rob.py`)
 The ROB ensures instructions are committed in program order, preserving the sequential consistency of the execution.
--   **Capacity**: `ROB_SIZE` (default 32) entries.
+-   **Capacity**: `ROB_SIZE` (default 16) entries.
 -   **State Management**: Holds the status (Issued, Executing, Finished, Committed) and result of every in-flight instruction.
 -   **Commit**: Commits the instruction at the head of the buffer if it has finished execution. This involves updating the architectural Register File and performing memory writes.
 -   **Recovery**: Handles branch mispredictions. If a misprediction is detected at commit time, the ROB flushes the pipeline (RS, LSQ, Fetcher) and redirects the Fetcher to the correct PC.
@@ -61,10 +61,13 @@ The ALU performs arithmetic and logical operations.
 
 ### 7. Branch Prediction Unit (BPU) (`bpu.py`)
 The BPU predicts the outcome of branch instructions to minimize pipeline stalls.
--   **Strategies**: The codebase includes implementations for:
-    -   `AlwaysFalseBPU`: Always predicts not taken.
-    -   `AlwaysTakenBPU`: Always predicts taken.
-    -   `TwoBitBPU`: Uses a 2-bit saturating counter for prediction.
+-   **Strategies**: The codebase includes implementations for several branch prediction strategies:
+    -   Always Taken
+    -   Always Not Taken
+    -   2-bit Saturating Counter
+    -   Global History Predictor
+    -   Tournament Predictor
+    -   TAGE Predictor
 -   **Update**: Receives actual branch outcomes from the ROB to update its prediction state.
 
 ## Execution Flow
